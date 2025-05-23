@@ -1,0 +1,153 @@
+import cv2 as cv
+import sys
+import os
+from LoadData import loadData
+from MatchData import matchData
+from SaveData import saveData
+
+class interFace:
+    def __init__(self):
+        self.path = os.path.join(os.getcwd(), 'data')
+        self.run()
+    
+    def run(self):
+        while True:
+            print("Welcome to the face recognition system")
+            print("1. Register a new user via Camera")
+            print("2. Register a new user via Image")
+            print("3. Recognize a user")
+            print("4. Exit")
+            try:
+                choice = int(input("Enter your choice: "))
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+                input("Press any key to continue...")
+                self.clear_screen()
+                continue
+
+            if choice == 1:
+                self.registerViaCamera()
+            elif choice == 2:
+                imag = input("Enter the path of the image: ")
+                self.registerViaImage(imag)
+            elif choice == 3:
+                self.recognize()
+            elif choice == 4:
+                print("Exiting program...")
+                sys.exit()
+            else:
+                print("Invalid choice")
+                input("Press any key to continue...")
+                self.clear_screen()
+    
+
+    def registerViaCamera(self):
+        cap = cv.VideoCapture(0)
+        if not cap.isOpened():
+            print("Error: Could not open video.")
+            print()
+            input("Press any key to continue...")
+            self.clear_screen()
+            return
+
+        print("Camera warming up... please wait.")
+        # Warm-up: grab some frames to let camera adjust
+        for _ in range(30):
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+        print("Press 's' to save the image or 'q' to quit.")
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print("Error: Could not read frame.")
+                break
+
+            cv.imshow('Camera - Press s to save', frame)
+            key = cv.waitKey(1) & 0xFF
+            if key == ord('s'):
+                # Save and break
+                if not os.path.exists(self.path):
+                    os.makedirs(self.path)
+                cv.imwrite(os.path.join(self.path, 'temp.jpg'), frame)
+                break
+            elif key == ord('q'):
+                print("Cancelled by user.")
+                break
+
+        cap.release()
+        cv.destroyAllWindows()
+
+        if key == ord('s'):
+            self.registerViaImage(os.path.join(self.path, 'temp.jpg'))
+        else:
+            self.clear_screen()
+
+    
+    def registerViaImage(self, imag):
+        name = input("Enter your name: ")
+        id = input("Enter your id: ")
+        if not os.path.exists(imag):
+            print("Error: Could not find image.")
+            print()
+            input("Press any key to continue...")
+            self.clear_screen()
+            return
+        saveData(name, id, imag)
+        print("User registered successfully")
+        print()
+        input("Press any key to continue...")
+        self.clear_screen()
+        return
+    
+    def recognize(self):
+        cap = cv.VideoCapture(0)
+        if not cap.isOpened():
+            print("Error: Could not open video.")
+            print()
+            input("Press any key to continue...")
+            self.clear_screen()
+            return
+
+        print("Camera warming up... please wait.")
+        for _ in range(30):
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+        print("Press 's' to capture image or 'q' to cancel.")
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print("Error: Could not read frame.")
+                break
+
+            cv.imshow('Camera - Press s to capture', frame)
+            key = cv.waitKey(1) & 0xFF
+            if key == ord('s'):
+                cv.imwrite(os.path.join(self.path, 'temp.jpg'), frame)
+                break
+            elif key == ord('q'):
+                print("Cancelled by user.")
+                break
+
+        cap.release()
+        cv.destroyAllWindows()
+
+        if key == ord('s'):
+            matcher = matchData(self.path + '/temp.jpg')
+            matched = matcher.result
+            if matched:
+                name, id = matched
+                print(f"User recognized: {name} (ID: {id})")
+            else:
+                print("No match found.")
+        print()
+        input("Press any key to continue...")
+        self.clear_screen()
+
+    
+    def clear_screen(self):
+        os.system('cls' if os.name == 'nt' else 'clear')
+
