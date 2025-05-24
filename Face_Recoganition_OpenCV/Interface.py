@@ -1,7 +1,6 @@
 import cv2 as cv
 import sys
 import os
-from LoadData import loadData
 from MatchData import matchData
 from SaveData import saveData
 

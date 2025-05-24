@@ -6,15 +6,18 @@ class saveData:
     def __init__(self,name,id,imag):
         self.name = name
         self.id = id
-        self.path = os.path.join(os.getcwd(), 'data\\', f'{name}_{id}.npy')
+        self.dno = 0
+        self.path = os.path.join(os.getcwd(), 'data\\', f'{name}_{id}_{self.dno}.npy')
         self.imag = imag
         self.save_img()
     
     def save_img(self):
         if not os.path.exists(os.path.dirname(self.path)):
             os.makedirs(os.path.dirname(self.path))
+        while os.path.exists(self.path):
+            self.dno = str(int(self.dno)+1)
+            self.path = os.path.join(os.getcwd(), 'data\\',f'{self.name}_{self.id}_{self.dno}.npy')
         np.save(self.path, self.encode(self.imag))
-        print(f"Data saved to {self.path}")
 
     def encode(self, image_path):
         image = face_recognition.load_image_file(image_path)
@@ -37,5 +40,5 @@ class loadData:
             if filename.endswith('.npy'):
                 path = os.path.join(os.getcwd(), 'data', filename)
                 self.data.append(np.load(path))
-                name, id = os.path.splitext(filename)[0].split('_')
-                self.labels.append((name, id))
+                name, id,dno = os.path.splitext(filename)[0].split('_')
+                self.labels.append((name, id, dno))

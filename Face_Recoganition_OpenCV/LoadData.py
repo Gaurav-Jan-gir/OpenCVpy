@@ -13,5 +13,5 @@ class loadData:
             if filename.endswith('.npy'):
                 path = os.path.join(os.getcwd(), 'data', filename)
                 self.data.append(np.load(path))
-                name, id = os.path.splitext(filename)[0].split('_')
-                self.labels.append((name, id))
+                name, id ,dno= os.path.splitext(filename)[0].split('_')
+                self.labels.append((name, id, dno))

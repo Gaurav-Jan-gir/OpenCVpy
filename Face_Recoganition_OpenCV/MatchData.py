@@ -17,9 +17,8 @@ class matchData:
             return None
         # Compare the image with the data
         results = face_recognition.compare_faces(self.load_data.data, encoding[0])
-        for match, (name, id) in zip(results, self.load_data.labels):
+        for match, (name, id, dno) in zip(results, self.load_data.labels):
             if match:
-                print(f"Matched with: {name} (ID: {id})")
                 return (name, id)
         
         print("No match found.")
