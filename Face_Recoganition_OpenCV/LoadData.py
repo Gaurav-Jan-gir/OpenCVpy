@@ -12,6 +12,13 @@ class loadData:
         for filename in os.listdir(os.path.join(os.getcwd(), 'data')):
             if filename.endswith('.npy'):
                 path = os.path.join(os.getcwd(), 'data', filename)
-                self.data.append(np.load(path))
-                name, id ,dno= os.path.splitext(filename)[0].split('_')
-                self.labels.append((name, id, dno))
+                try:
+                    encoding = np.load(path)
+                    if isinstance(encoding, np.ndarray) and encoding.shape == (128,):
+                        name, id, dno = os.path.splitext(filename)[0].split('_')
+                        self.data.append(encoding)
+                        self.labels.append((name, id, dno))
+                    else:
+                        print(f"Skipping invalid file (wrong shape): {filename}")
+                except Exception as e:
+                    print(f"Skipping corrupted file {filename}: {e}")

@@ -2,9 +2,9 @@ import LoadData
 import face_recognition
 
 class matchData:
-    def __init__(self, imag):
+    def __init__(self, imag, load_data=None):
         self.imag = imag
-        self.load_data = LoadData.loadData()
+        self.load_data = load_data if load_data else LoadData.loadData()
         self.result = self.match()
     
     def match(self):

@@ -1,12 +1,15 @@
 import cv2 as cv
 import sys
+import numpy as np
 import os
 from MatchData import matchData
 from SaveData import saveData
+from LoadData import loadData
 
 class interFace:
     def __init__(self):
         self.path = os.path.join(os.getcwd(), 'data')
+        self.load_data = loadData()
         self.run()
     
     def run(self):
@@ -15,7 +18,8 @@ class interFace:
             print("1. Register a new user via Camera")
             print("2. Register a new user via Image")
             print("3. Recognize a user")
-            print("4. Exit")
+            print("4. Check if User Data exist or not.")
+            print("5. Exit")
             try:
                 choice = int(input("Enter your choice: "))
             except ValueError:
@@ -32,12 +36,22 @@ class interFace:
             elif choice == 3:
                 self.recognize()
             elif choice == 4:
+                if self.is_valid_path(os.path.join(self.path,f'{input("Enter User Name ")}_{input("Enter User ID ")}_0.npy')):
+                    print("The User Data Exists. ")
+                else:
+                    print("The User Data does not exist.")
+                print()
+                input("Press any key to continue...")
+                self.clear_screen()
+            elif choice == 5:
                 print("Exiting program...")
                 sys.exit()
             else:
                 print("Invalid choice")
                 input("Press any key to continue...")
                 self.clear_screen()
+
+        
     
 
     def registerViaCamera(self):
@@ -93,8 +107,11 @@ class interFace:
             input("Press any key to continue...")
             self.clear_screen()
             return
-        saveData(name, id, imag)
-        print("User registered successfully")
+        saveStatus = saveData(name, id, imag,self.load_data)
+        if saveStatus.flag:
+            print("User registered successfully")
+            self.load_data.data.append(np.load(saveStatus.path))
+            self.load_data.labels.append((saveStatus.name, saveStatus.id, saveStatus.dno))
         print()
         input("Press any key to continue...")
         self.clear_screen()
@@ -135,7 +152,7 @@ class interFace:
         cv.destroyAllWindows()
 
         if key == ord('s'):
-            matcher = matchData(self.path + '/temp.jpg')
+            matcher = matchData(self.path + '/temp.jpg',load_data=self.load_data)
             matched = matcher.result
             if matched:
                 name, id = matched
@@ -146,6 +163,8 @@ class interFace:
         input("Press any key to continue...")
         self.clear_screen()
 
+    def is_valid_path(self, path):
+        return os.path.exists(path) and os.path.isfile(path)
     
     def clear_screen(self):
         os.system('cls' if os.name == 'nt' else 'clear')
