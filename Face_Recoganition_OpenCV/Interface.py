@@ -1,7 +1,7 @@
 import cv2 as cv
 import sys
-import numpy as np
 import os
+import face_recognition
 from MatchData import matchData
 from SaveData import saveData
 from LoadData import loadData
@@ -99,19 +99,16 @@ class interFace:
 
     
     def registerViaImage(self, imag):
-        name = input("Enter your name: ")
-        id = input("Enter your id: ")
         if not os.path.exists(imag):
             print("Error: Could not find image.")
             print()
             input("Press any key to continue...")
             self.clear_screen()
             return
-        saveStatus = saveData(name, id, imag,self.load_data)
+        saveStatus = saveData(imag,self.load_data)
         if saveStatus.flag:
             print("User registered successfully")
-            self.load_data.data.append(np.load(saveStatus.path))
-            self.load_data.labels.append((saveStatus.name, saveStatus.id, saveStatus.dno))
+            self.load_data = loadData()
         print()
         input("Press any key to continue...")
         self.clear_screen()
@@ -152,13 +149,29 @@ class interFace:
         cv.destroyAllWindows()
 
         if key == ord('s'):
-            matcher = matchData(self.path + '/temp.jpg',load_data=self.load_data)
-            matched = matcher.result
-            if matched:
-                name, id = matched
-                print(f"User recognized: {name} (ID: {id})")
-            else:
-                print("No match found.")
+            cropped_faces , cropped_faces_locations = self.crop_face(os.path.join(self.path, 'temp.jpg'))
+            for cropped_face, location in zip(cropped_faces, cropped_faces_locations):
+                top, right, bottom, left = location
+                cv.rectangle(cropped_face, (left, top), (right, bottom), (0, 255, 0), 2)
+                cropped_face_path = os.path.join(self.path, 'cropped.jpg')
+                cv.imwrite(cropped_face_path, cropped_face)
+                matcher = matchData(cropped_face_path,load_data=self.load_data)
+                matched = matcher.result
+                if matched:
+                    name, id = matched
+                    print(f"User recognized: {name} (ID: {id})")
+                    image = cv.imread(os.path.join(self.path, 'temp.jpg'))
+                    # Ensure image is loaded
+                    if image is None:
+                        print(f"Error: Could not load image from {os.path.join(self.path, 'temp.jpg')}")
+                        continue # or handle error appropriately
+                    cv.rectangle(image, (left, top), (right, bottom), (0, 255, 0), 2)
+                    cv.putText(image, f"{name} (ID: {id})", (left, top - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    cv.imshow("Recognized Face", image)
+                    cv.waitKey(0)
+                    cv.destroyAllWindows()
+                else:
+                    print("No match found.")
         print()
         input("Press any key to continue...")
         self.clear_screen()
@@ -168,4 +181,38 @@ class interFace:
     
     def clear_screen(self):
         os.system('cls' if os.name == 'nt' else 'clear')
+
+    def crop_face(self, image_path):
+        if not os.path.exists(image_path):
+            print("Error: Image file does not exist.")
+            return None
+        image_bgr = cv.imread(image_path)
+        if image_bgr is None:
+            print("Error: Could not read image.")
+            return None
+        # Convert the image to RGB
+        image_rgb = cv.cvtColor(image_bgr, cv.COLOR_BGR2RGB)
+        # Detect faces in the image
+        face_locations = face_recognition.face_locations(image_rgb)
+        margin = 10
+        if not face_locations:
+            print("Error: No faces detected in the image.")
+            return None
+        # Crop the first detected face
+        cropped_faces = []
+        cropped_faces_locations = []
+
+        for (top, right, bottom, left) in face_locations:
+            top = max(0, top - margin)
+            left = max(0, left - margin)
+            bottom = min(image_bgr.shape[0], bottom + margin)
+            right = min(image_bgr.shape[1], right + margin)
+            cropped_face = image_bgr[top:bottom, left:right]
+            if cropped_face.size == 0:
+                print("Error: Cropped face is empty.")
+                return None
+            cropped_faces.append(cropped_face)
+            cropped_faces_locations.append((top, right, bottom, left))
+        return cropped_faces, cropped_faces_locations
+
 
