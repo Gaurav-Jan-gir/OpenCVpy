@@ -16,10 +16,13 @@ class matchData:
             print("Error: No face detected.")
             return None
         # Compare the image with the data
-        results = face_recognition.compare_faces(self.load_data.data, encoding[0])
-        for match, (name, id, dno) in zip(results, self.load_data.labels):
-            if match:
-                return (name, id)
+        confidence_scores = face_recognition.face_distance(self.load_data.data, encoding[0])
+        max_confidence_index = 0
+        max_confidence_score = confidence_scores[0]
+        for i, score in enumerate(confidence_scores):
+            if score < max_confidence_score:
+                max_confidence_score = score
+                max_confidence_index = i
+        name,id,dno=self.load_data.labels[max_confidence_index]
+        return (name,id,dno,max_confidence_score)
         
-        print("No match found.")
-        return None

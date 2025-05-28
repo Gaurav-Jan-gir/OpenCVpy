@@ -5,7 +5,7 @@ import cv2 as cv
 from MatchData import matchData
 
 class saveData:
-    def __init__(self,imag, load_data=None):
+    def __init__(self,imag, load_data=None, showConfidence = False ,threshold_confidence=0.7):
         self.name = ""
         self.id = ""
         self.flag = False
@@ -13,6 +13,8 @@ class saveData:
         self.dno = 0
         self.path = ""
         self.imag = imag
+        self.showConfidence = showConfidence  # Set whether to show confidence in the interface
+        self.threshold_confidence = threshold_confidence  # Set your threshold confidence level here
         self.encode()
     
     def save_img(self,encoding):
@@ -49,7 +51,7 @@ class saveData:
         
         # Convert RGB to BGR for OpenCV display
         image_bgr = cv.cvtColor(image, cv.COLOR_RGB2BGR)
-        for face_location, encoding in zip(face_locations, encodings):
+        for i,(face_location, encoding) in enumerate(zip(face_locations, encodings)):
             top, right, bottom, left = face_location
             # add margin to crop the face
             margin = 10
@@ -62,8 +64,14 @@ class saveData:
             cropped_face_path = os.path.join(os.getcwd(), 'data','cropped_face.jpg')
             cv.imwrite(cropped_face_path, cropped_face_bgr)
             matcher = matchData(cropped_face_path, load_data=self.load_data)
-            if matcher.result is not None:
-                choice = self.interfaceSaveData(matcher.result[0], matcher.result[1]) 
+            image_copy = image_bgr.copy()
+            cv.rectangle(image_copy, (left, top), (right, bottom), (0, 255, 0), 2)
+            cv.imshow("Face Detected", image_copy)
+            cv.waitKey(0)
+            cv.destroyAllWindows()
+            if matcher.result is not None and matcher.result[3] < self.threshold_confidence:
+
+                choice = self.interfaceSaveData(matcher.result[0], matcher.result[1], matcher.result[3]) 
                 if choice == 1:
                     self.name = matcher.result[0]
                     self.id = matcher.result[1]
@@ -71,12 +79,8 @@ class saveData:
                     self.flag = True
                     continue
                 elif choice == 2 or choice == 3:
-                    cv.rectangle(image_bgr, (left, top), (right, bottom), (0, 255, 0), 2)
-                    cv.imshow("Face Detected", image_bgr)
-                    cv.waitKey(1)
                     self.name = input("Enter User Name for the face detected: ")
                     self.id = input("Enter User ID for the face detected: ")
-                    cv.destroyWindow("Face Detected")
                     if choice == 3:
                         self.changeAllMatchData(matcher.result[0], matcher.result[1])
                     self.save_img(encoding)
@@ -85,16 +89,14 @@ class saveData:
                     print("Aborting saving current data.")
                     self.flag = False
                     continue
-            else:
+            elif( matcher.result is not None and matcher.result[3] >= self.threshold_confidence):
                 # No match found, ask for new name and ID
-                cv.rectangle(image_bgr, (left, top), (right, bottom), (0, 255, 0), 2)
-                cv.imshow("Face Detected", image_bgr)
-                cv.waitKey(1)
                 self.name = input("Enter User Name for the face detected: ")
                 self.id = input("Enter User ID for the face detected: ")
-                cv.destroyWindow("Face Detected")
                 self.save_img(encoding)
                 self.flag = True
+            
+            
 
     def changeAllMatchData(self, name, id):
         data_dir = os.path.join(os.getcwd(), 'data')
@@ -105,8 +107,11 @@ class saveData:
                     new_path = os.path.join(data_dir, f'{self.name}_{self.id}_{file.split("_")[-1]}')
                     os.rename(old_path, new_path)
 
-    def interfaceSaveData(self, name, id):
-        print(f'User already exists with\nName: {name} and ID: {id}')
+    def interfaceSaveData(self, name, id ,conf):
+        if not self.showConfidence:
+            print(f'User already exists with\nName: {name} and ID: {id}')
+        else:
+            print(f'User already exists with\nName: {name} and ID: {id} with confidence {(1-conf)*100:.2f}%')
         print('Press 1 to Save Current data with existing Name and ID')
         print('Press 2 to Save current data with new Name and ID')
         print('Press 3 to Update existing data with new Name and ID')
