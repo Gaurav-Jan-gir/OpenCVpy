@@ -1,22 +1,22 @@
-import LoadData
-import face_recognition
+from face_recognition import face_encodings, face_distance, load_image_file
+from interFace_msg import message
 
 class matchData:
-    def __init__(self, imag, load_data=None):
+    def __init__(self, imag, load_data):
         self.imag = imag
-        self.load_data = load_data if load_data else LoadData.loadData()
+        self.load_data = load_data
         self.result = self.match()
     
     def match(self):
         # Load the image
-        image = face_recognition.load_image_file(self.imag)
+        image = load_image_file(self.imag)
         # Encode the image
-        encoding = face_recognition.face_encodings(image)
+        encoding = face_encodings(image)
         if not encoding:
-            print("Error: No face detected.")
+            message("No face encodings found in the image.")
             return None
         # Compare the image with the data
-        confidence_scores = face_recognition.face_distance(self.load_data.data, encoding[0])
+        confidence_scores = face_distance(self.load_data.data, encoding[0])
         max_confidence_index = 0
         max_confidence_score = confidence_scores[0]
         for i, score in enumerate(confidence_scores):
