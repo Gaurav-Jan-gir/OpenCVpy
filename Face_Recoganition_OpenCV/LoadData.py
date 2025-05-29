@@ -1,5 +1,6 @@
 import os
 import numpy as np
+from interFace_msg import message
 
 class loadData:
     def __init__(self):
@@ -19,6 +20,6 @@ class loadData:
                         self.data.append(encoding)
                         self.labels.append((name, id, dno))
                     else:
-                        print(f"Skipping invalid file (wrong shape): {filename}")
+                        message(f"Skipping invalid file (wrong shape): {filename}");
                 except Exception as e:
-                    print(f"Skipping corrupted file {filename}: {e}")
+                    message(f"Skipping corrupted file: {filename}")
