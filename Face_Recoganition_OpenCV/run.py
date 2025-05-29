@@ -1,4 +1,4 @@
-import Interface
+import Interface_excel as Interface
 import sys
 
 if __name__ == "__main__":

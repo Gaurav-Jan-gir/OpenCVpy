@@ -7,43 +7,39 @@ class Camera:
     def __init__(self):
         self.path = os.path.join(os.getcwd(), 'data')
         self.isSaved = False
-        self.capture()
+        self.cam = cv.VideoCapture(0)
         
-    
+    def destroy(self):
+        cv.destroyAllWindows()
+        if self.cam.isOpened():
+            self.cam.release()
+        message("Camera closed successfully.")
+
     def capture(self):
-        cap = cv.VideoCapture(0)
-        if not cap.isOpened():
+        if not self.cam.isOpened():
             message("Could not open camera. Please check your camera connection.", input_key=True)
-            return 
-        message("Camera warming up... please wait.")
-        # Warm-up: grab some frames to let camera adjust
-        for _ in range(30):
-            ret, frame = cap.read()
-            if not ret:
-                continue
+            return
 
         message("Press 's' to save the image or 'q' to quit.")
         while True:
-            ret, frame = cap.read()
+            ret, frame = self.cam.read()
             if not ret:
                 message("Error: Could not read frame.")
                 break
 
             cv.imshow('Camera - Press s to save', frame)
             key = cv.waitKey(1) & 0xFF
+
             if key == ord('s'):
-                # Save and break
                 if not os.path.exists(self.path):
                     os.makedirs(self.path)
                 cv.imwrite(os.path.join(self.path, 'temp.jpg'), frame)
                 self.isSaved = True
                 break
             elif key == ord('q'):
-                message("Cancelled by user.")
+                print("Capture cancelled.")
                 break
 
-        cap.release()
-        cv.destroyAllWindows()
 
     @staticmethod
     def crop_face(image_path):
