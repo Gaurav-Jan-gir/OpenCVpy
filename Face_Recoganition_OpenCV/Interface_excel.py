@@ -5,21 +5,21 @@ from SaveData import saveData
 from LoadData import loadData
 from camera import Camera
 from interFace_msg import message
-from openpyxl import Workbook, load_workbook
-from datetime import datetime
+from excel_handle import Excel_handle
 
 class interFace:
-    def __init__(self, confidence_match=0.3, confidence_save=0.3, showConfidence=True):
+    def __init__(self, excel_path=None ,confidence_match=0.3, confidence_save=0.3, showConfidence=True):
         self.path = os.path.join(os.getcwd(), 'data')
         self.load_data = loadData()
         self.confidence_match = confidence_match
         self.save_confidence = confidence_save
         self.showConfidence = showConfidence
+        if excel_path is None:
+            excel_path = os.path.join(self.path,'data.xlsx')
+        self.ex = Excel_handle(excel_path)
         self.run()
 
     def run(self):
-        wb = self.create_excel_file(self.path)
-        ws = wb.active
         while True:
             print("Welcome to the face recognition system")
             print("1. Register a new user via Camera")
@@ -42,7 +42,7 @@ class interFace:
                 imag = input("Enter the path of the image: ")
                 self.registerViaImage(imag)
             elif choice == 3:
-                self.recognize(ws,wb)
+                self.recognize()
             elif choice == 4:
                 if self.is_valid_path(os.path.join(self.path,f'{input("Enter User Name ")}_{input("Enter User ID ")}_0.npy')):
                     print("The User Data Exists. ")
@@ -62,7 +62,10 @@ class interFace:
                 self.clear_screen()
 
     def registerViaCamera(self):
-        if Camera().isSaved:
+        cam = Camera()
+        cam.capture()
+        cam.destroy()
+        if cam.isSaved:
             self.registerViaImage(os.path.join(self.path, 'temp.jpg'))
         else:
             self.clear_screen()
@@ -79,20 +82,11 @@ class interFace:
         return
 
 
-    def create_excel_file(self,path):
-        if not os.path.exists(path):
-            os.makedirs(path)
-        if not os.path.exists(os.path.join(self.path, 'data.xlsx')):
-            wb = Workbook()
-            sheet = wb.active
-            sheet.title = "User Data"
-            sheet.append(["Name", "ID", "Confidence", "Date", "Time"])
-            wb.save(os.path.join(self.path, 'data.xlsx'))
-        wb = load_workbook(os.path.join(self.path, 'data.xlsx'))
-        return wb
+    
 
-    def recognize(self,ws,wb):
+    def recognize(self):
         print("Starting Recognition... Press 'q' to quit.")
+        tg = int(input("Enter the time for which recoganition will occur (no duplicate entry) in seconds: "))
         while True:
             cam = Camera()
             cam.capture()
@@ -104,11 +98,17 @@ class interFace:
                     matcher = matchData(cropped_face_path, load_data=self.load_data)
                     matched = matcher.result
                     if matched is not None and matched[3] < self.confidence_match:
-                        ws.append([matched[0], matched[1], str((1-matched[3])*100), datetime.now().strftime("%d/%m/%Y"), datetime.now().strftime("%H:%M:%S")])   
-                        wb.save(os.path.join(self.path, 'data.xlsx')) 
+                        try:
+                            self.ex.write_to_excel(matched[0], matched[1], matched[3],tg)   
+                        except PermissionError as e:
+                            print(f"Permission Error: {e}. Please close the Excel file and try again.")
+                            input("Press any key to continue...")
+                            return
             else:
                 cam.destroy()
                 break
+    
+
 
     def configureConfidence(self):
         while True:
