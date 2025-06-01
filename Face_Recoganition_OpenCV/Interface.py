@@ -5,17 +5,19 @@ from SaveData import saveData
 from LoadData import loadData
 from camera import Camera
 from interFace_msg import message
+import json
 
 class interFace:
-    def __init__(self,confidence_match = 0.3, confidence_save = 0.3, showConfidence=True):
+    def __init__(self,config_path):
+        self.config = self.load_config(config_path)
         self.path = os.path.join(os.getcwd(), 'data')
         self.load_data = loadData()
-        self.confidence_match = confidence_match
-        self.save_confidence = confidence_save
-        self.showConfidence = showConfidence
-        self.run()
+        self.confidence_match = self.config["confidence_match"]
+        self.save_confidence = self.config["confidence_save"]
+        self.showConfidence = self.config["show_confidence"]
+        self.run(config_path)
     
-    def run(self):
+    def run(self,config_path):
         while True:
             print("Welcome to the face recognition system")
             print("1. Register a new user via Camera")
@@ -49,6 +51,10 @@ class interFace:
                 self.clear_screen()
             elif choice==5:
                 self.configureConfidence()
+                self.config["confidence_match"] = self.confidence_match
+                self.config["confidence_save"] = self.save_confidence
+                self.config["show_confidence"] = self.showConfidence
+                self.save_config(self.config,config_path)
             elif choice == 6:
                 print("Exiting program...")
                 sys.exit()
@@ -145,5 +151,28 @@ class interFace:
             else:
                 print("Invalid choice")
             input("Press any key to continue...")
+
+    def load_config(self,config_path='config.json'):
+        default_config = {
+            "confidence_match": 0.3,
+            "confidence_save": 0.3,
+            "show_confidence": True
+        }
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    user_config = json.load(f)
+                    default_config.update(user_config)
+            except Exception as e:
+                print(f"Error loading config: {e}")
+        return default_config
+
+    def save_config(self,config, config_path='config.json'):
+        try:
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=4)
+        except Exception as e:
+            print(f"Error saving config: {e}")
+
         
 
