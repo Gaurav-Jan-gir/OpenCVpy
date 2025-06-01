@@ -3,6 +3,7 @@ import sys
 import create_backup as backup
 import os
 
+
 backup_dir = os.path.join(os.getcwd(), 'backup')
 data_dir = os.path.join(os.getcwd(), 'data')
 
@@ -37,6 +38,6 @@ if __name__ == "__main__":
     except Exception as e:
             print(f"An error occurred: {e}")
             print("Please check the configuration and try again.")
-            if input("Do you want to restore backup? (y/n): ").strip().lower() != 'y':
+            if input("Do you want to restore backup? (y/n): ").strip().lower() == 'y':
                 backup.restore_backup(backup_dir, data_dir, excel_path)
             sys.exit(1)
