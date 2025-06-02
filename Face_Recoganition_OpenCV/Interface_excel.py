@@ -93,7 +93,6 @@ class interFace:
         message("", input_key=True)
         return
 
-
     def recognize(self):
         print("🎥 Select Recognition Mode:")
         print("1. Real-time Recognition (Continuous Camera Feed)")
@@ -210,9 +209,6 @@ class interFace:
                 os.remove(image_path)
             except Exception as e:
                 print(f"Warning: Couldn't delete {image_path}: {e}")
-            
-
-
 
     def configureConfidence(self):
         while True:
