@@ -43,26 +43,26 @@ class Excel_handle:
                 return None
         return wb
     
-    def get_row_number(self, ws,id):
-        for rn in range(2, ws.max_row + 1):  # Start from row 2 (skip header)
-            cell_value = ws.cell(row=rn, column=1).value  # ID is in column 1
+    def get_row_number(self, id):
+        for rn in range(2, self.ws.max_row + 1):  # Start from row 2 (skip header)
+            cell_value = self.ws.cell(row=rn, column=1).value  # ID is in column 1
             if cell_value == id:
                 return rn
         return None
     
 
-    def write_to_excel(self,name, id, confidence,tg):
-        row_num = self.get_row_number(self.ws, id)
-        dt = datetime.now().strftime("%d/%m/%Y") + " - " + datetime.now().strftime("%H:%M:%S")
+    def write_to_excel(self,name, id, confidence,tg,dt = None):
+        row_num = self.get_row_number(id)
+        if dt is None:
+            dt = datetime.now().strftime("%d/%m/%Y") + " - " + datetime.now().strftime("%H:%M:%S")
         confidence = round((1-confidence) * 100, 2)  # Convert to percentage
         if row_num is None:
             self.ws.append([id, name, confidence, 1,dt])
-            self.ws.column_dimensions['A'].width = max(len(str(id))+3,self.ws.column_dimensions['A'].width)
-            self.ws.column_dimensions['B'].width = max(len(name)+3,self.ws.column_dimensions['B'].width)
-            self.ws.column_dimensions['C'].width = max(len(str(confidence))+3,self.ws.column_dimensions['C'].width)
-            self.ws.column_dimensions['D'].width = max(len(str(1))+3,self.ws.column_dimensions['D'].width)
-            self.ws.column_dimensions['E'].width = max(len(dt)+3,self.ws.column_dimensions['E'].width)
-        else:
+            for col, val in zip(['A', 'B', 'C', 'D', 'E'], [str(id), name, str(confidence), '1', dt]):
+                if col not in self.ws.column_dimensions:
+                    self.ws.column_dimensions[col].width = len(val) + 3
+                else:
+                    self.ws.column_dimensions[col].width = max(len(val) + 3, self.ws.column_dimensions[col].width)
             
             count = self.ws.cell(row=row_num, column=4).value
             if self.timeGapInSeconds(self.ws.cell(row=row_num, column=4+count).value, dt) < tg:
@@ -72,10 +72,53 @@ class Excel_handle:
             cl = utils.get_column_letter(5+count)
             self.ws.cell(row=row_num, column=4).value = count + 1
             self.ws.cell(row=row_num, column=5+count).value = dt
-            self.ws.column_dimensions[cl].width = max(len(dt),self.ws.column_dimensions[cl].width)
+            if cl not in self.ws.column_dimensions:
+                self.ws.column_dimensions[cl].width = len(dt) + 3
+            else:
+                self.ws.column_dimensions[cl].width = max(len(dt) + 3, self.ws.column_dimensions[cl].width)
         self.wb.save(self.path)
-        
+            
     def timeGapInSeconds(self, old_time, new_time):
         old_time = datetime.strptime(old_time, "%d/%m/%Y - %H:%M:%S")
         new_time = datetime.strptime(new_time, "%d/%m/%Y - %H:%M:%S")
         return (new_time - old_time).total_seconds()
+    
+    def read_excel(self,row,column):
+        return self.ws.cell(row,column).value;
+
+    def get_date_time_now(self):
+        return datetime.now().strftime("%d/%m/%Y") + " - " + datetime.now().strftime("%H:%M:%S")
+    
+    def write_excel(self,row,column,value):
+        self.ws.cell(row,column).value = value
+        self.wb.save(self.path)
+
+
+    def is_valid_time(self, time_str):
+        try:
+            datetime.strptime(time_str, "%d/%m/%Y - %H:%M:%S")
+            return True
+        except ValueError:
+            return False
+        
+    def is_valid_date(self, date_str):
+        try:
+            datetime.strptime(date_str, "%d/%m/%Y")
+            return True
+        except ValueError:
+            return False
+
+    def get_entries_by_time_range(self,c_row,initial_time,final_time):
+        entries = []
+        if not self.is_valid_time(initial_time) or not self.is_valid_time(final_time):
+            print("Invalid time format. Please use 'dd/mm/yyyy - hh:mm:ss'.")
+            return entries
+        for cl in range(5,self.ws.max_column+1):
+            ex_val = self.read_excel(c_row,cl)
+            if(ex_val < initial_time):
+                continue
+            elif(ex_val >= final_time):
+                break
+            else:
+                entries.append(ex_val)
+        return entries    

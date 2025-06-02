@@ -1,4 +1,4 @@
-import sys
+from multiprocessing import Process, Queue
 import os
 from MatchData import matchData
 from SaveData import saveData
@@ -7,6 +7,8 @@ from camera import Camera
 from interFace_msg import message
 from excel_handle import Excel_handle
 import json
+from capture_camera_frames import Capture_camera_frames as ccf
+
 
 class interFace:
     def __init__(self, excel_path, config_path):
@@ -29,7 +31,8 @@ class interFace:
             print("3. Start Recognition")
             print("4. Check if User Data exist or not.")
             print("5. Configure Confidence Levels (Default 60%)")
-            print("6. Exit")
+            print("6. Operate on data in Excel.")
+            print("7. Exit")
             try:
                 choice = int(input("Enter your choice: "))
             except ValueError:
@@ -60,6 +63,9 @@ class interFace:
                 self.config["show_confidence"] = self.showConfidence
                 self.save_config(self.config,config_path)
             elif choice == 6:
+                self.operate_excel()
+                
+            elif choice==7:
                 print("Exiting program...")
                 return
             else:
@@ -88,11 +94,33 @@ class interFace:
         return
 
 
-    
-
     def recognize(self):
+        print("🎥 Select Recognition Mode:")
+        print("1. Real-time Recognition (Continuous Camera Feed)")
+        print("2. Recognition by Capturing Frames on Key Press")
+        print("Press any other key to Go Back to Main Menu")
+
+        choice = input("Enter your choice: ").strip()
+        while choice in ['1', '2']:
+            try:
+                tg = int(input("Enter time (seconds) for valid duplicate gap (recognition logic): "))
+                if tg <= 0:
+                    print("Time must be a positive integer. Please try again.")
+                    continue
+                break
+            except ValueError:
+                print("Invalid input.")
+
+        if choice == '1':
+            self.real_time_recognition(os.path.join(os.getcwd(), 'capture_frames'),tg)
+        elif choice == '2':
+            self.capture_on_keypress(tg)
+        else:
+            return
+
+    def capture_on_keypress(self,tg):
         print("Starting Recognition... Press 'q' to quit.")
-        tg = int(input("Enter the time for which recoganition will occur (no duplicate entry) in seconds: "))
+
         while True:
             cam = Camera()
             cam.capture()
@@ -113,7 +141,77 @@ class interFace:
             else:
                 cam.destroy()
                 break
-    
+
+    def real_time_recognition(self, image_dir_path,tg):
+        try:
+            fps = int(input("Enter the frames per second for capturing frames: "))
+            if fps <= 0:
+                print("FPS must be a positive integer. Using default FPS of 30.")
+                fps = 30
+        except ValueError:
+            print("Invalid input. Using default FPS of 30.")
+            fps = 30
+        try:
+            os.remove(image_dir_path)
+        except Exception as e:
+            print(f"Warning: Couldn't delete {image_dir_path}: {e}")
+        q = Queue()
+        c_i = ccf()
+        p1 = Process(target=c_i.run, args=(fps,q))
+        p2 = Process(target=self.recognize_from_frames, args=(tg, q))
+
+        p1.start()
+        p2.start()
+
+        p1.join()
+        p2.join()   
+
+    def recognize_from_frames(self, tg, q):    
+
+        while True:
+
+            image_path = q.get()
+            if image_path == 'q':
+                break
+            
+
+            if not os.path.exists(image_path):
+                print(f"Image {image_path} does not exist. Skipping...")
+                continue
+
+            result = Camera.crop_face(image_path)
+            if not result:
+                try:
+                    os.remove(image_path)
+                except Exception as e:
+                    print(f"Warning: Couldn't delete {image_path}: {e}")
+                continue
+            cropped_faces, cropped_locations = result
+            img,date,time,idx = os.path.basename(image_path).split('_')
+            date = date[:2] + '/' + date[2:4] + '/' + date[4:]
+            time = time[:2] + ':' + time[2:4] + ':' + time[4:]
+
+
+            for face_img, location in zip(cropped_faces, cropped_locations):
+                cropped_face_path = os.path.join(self.path, 'cropped.jpg')
+                Camera.img_write(face_img, cropped_face_path)
+
+                matcher = matchData(cropped_face_path, load_data=self.load_data)
+                matched = matcher.result
+                if matched and matched[3] < self.confidence_match:
+                    try:
+                        self.ex.write_to_excel(matched[0], matched[1], matched[3],tg, f'{date} - {time}')
+                    except PermissionError as e:
+                        print(f"⚠️ Permission Error: {e}. Please close the Excel file and try again.")
+                        input("Press any key to continue...")
+                        return
+
+            try:
+                os.remove(image_path)
+            except Exception as e:
+                print(f"Warning: Couldn't delete {image_path}: {e}")
+            
+
 
 
     def configureConfidence(self):
@@ -182,4 +280,83 @@ class interFace:
                 json.dump(config, f, indent=4)
         except Exception as e:
             print(f"Error saving config: {e}")
+        
+    def operate_excel(self):
+        while True:
+            self.clear_screen()
+            print("📄 Excel Operations Menu")
+            print("------------------------")
+            print("1. Check user entry on a specific date")
+            print("2. Check user entries in a time range")
+            print("3. Get all entries of a user")
+            print("4. Manually create user entry with current date/time")
+            print("5. Manually create user entry with manual date/time")
+            print("6. Back to Main Menu")
             
+            choice = input("Enter your choice: ").strip()
+            if choice == '1':
+                self.query_entry_by_date(self.ex.get_row_number(input("Enter the ID of the User.")))
+            elif choice == '2':
+                self.query_entry_by_time_range(self.ex.get_row_number(input("Enter the ID of the User.")))
+            elif choice == '3':
+                self.query_all_entries_for_user(self.ex.get_row_number(input("Enter the ID of the User.")))
+            elif choice == '4':
+                self.create_entry_now(self.ex.get_row_number(input("Enter the ID of the User.")))
+            elif choice == '5':
+                self.create_entry_manual(self.ex.get_row_number(input("Enter the ID of the User.")))
+            elif choice == '6':
+                break
+            else:
+                print("Invalid choice. Please try again.")
+                input("Press Enter to continue...")
+            print()
+            input("Press Enter to Continue...")
+
+    def query_entry_by_date(self,c_row):
+        date = input("Enter the date (dd/mm/yyyy): ").strip()
+        if not self.ex.is_valid_date(date):
+            print("Invalid date format. Please use dd/mm/yyyy.")
+            return
+        initial_time = date + " - 00:00:00"
+        final_time = date + " - 23:59:59"
+        entries = self.ex.get_entries_by_time_range(c_row,initial_time, final_time)
+        if entries:
+            print(f"Entries for {date}:")
+            for entry in entries:
+                print(entry)
+        else:
+            print(f"No entries found for {date}.")
+
+    def query_entry_by_time_range(self,c_row):
+        initial_time = input("Enter the initial time (dd/mm/yyyy - HH:MM:SS): ").strip()
+        final_time = input("Enter the final time (dd/mm/yyyy - HH:MM:SS): ").strip()
+        if not self.ex.is_valid_time(initial_time) or not self.ex.is_valid_time(final_time):
+            print("Invalid time format. Please use dd/mm/yyyy - HH:MM:SS.")
+            input("Press Enter to continue...")
+            return
+        entries = self.ex.get_entries_by_time_range(c_row,initial_time, final_time)
+        if entries:
+            print(f"Entries from {initial_time} to {final_time}:")
+            for entry in entries:
+                print(entry)
+            print(f"Count : {len(entries)}")
+        else:
+            print(f"No entries found between {initial_time} and {final_time}.")   
+
+    def query_all_entries_for_user(self,c_row):
+        for cl in range(5,self.ex.ws.max_column+1):
+            print(self.ex.read_excel(c_row,cl))
+        print(self.ex.ws.max_column - 4)
+
+    def create_entry_now(self,c_row):
+        self.ex.write_excel(c_row,self.ex.ws.max_column+1,self.ex.get_date_time_now())
+
+    def create_entry_manual(self,c_row):
+        dt = input("Enter the date and time (dd/mm/yyyy - HH:MM:SS): ").strip()
+        if not self.ex.is_valid_time(dt):
+            print("Invalid date/time format. Please use dd/mm/yyyy - HH:MM:SS.")
+            input("Press Enter to continue...")
+            return
+        self.ex.write_excel(c_row,self.ex.ws.max_column+1,dt)
+
+    
