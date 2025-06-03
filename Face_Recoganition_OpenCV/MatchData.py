@@ -17,9 +17,6 @@ class matchData:
             return None
         # Compare the image with the data
         confidence_scores = face_distance(self.load_data.data, encoding[0])
-        if len(confidence_scores) == 0:
-            message("Comparison failed — no confidence scores generated.")
-            return None
         max_confidence_index = 0
         max_confidence_score = confidence_scores[0]
         for i, score in enumerate(confidence_scores):

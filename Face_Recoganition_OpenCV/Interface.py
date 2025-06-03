@@ -7,16 +7,10 @@ from camera import Camera
 from interFace_msg import message
 import json
 
-def get_safe_data_path():
-    base_dir = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__))
-    data_path = os.path.join(base_dir, 'data')
-    os.makedirs(data_path, exist_ok=True)
-    return data_path
 class interFace:
     def __init__(self,config_path):
-        self.path = get_safe_data_path()
         self.config = self.load_config(config_path)
-        os.makedirs(self.path, exist_ok=True)  # Ensure folder exists
+        self.path = os.path.join(os.getcwd(), 'data')
         self.load_data = loadData()
         self.confidence_match = self.config["confidence_match"]
         self.save_confidence = self.config["confidence_save"]
@@ -158,14 +152,12 @@ class interFace:
                 print("Invalid choice")
             input("Press any key to continue...")
 
-    def load_config(self,config_path=None):
+    def load_config(self,config_path='config.json'):
         default_config = {
             "confidence_match": 0.3,
             "confidence_save": 0.3,
             "show_confidence": True
         }
-        if config_path is None:
-            config_path = os.path.join(self.path, 'config.json')
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r') as f:

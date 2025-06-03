@@ -19,6 +19,7 @@ def create_backup(data_dir, excel_file, backup_dir):
 def remove_backup(backup_dir):
     if os.path.exists(backup_dir):
         shutil.rmtree(backup_dir)
+        print(f"Backup directory '{backup_dir}' has been removed.")
     else:
         print(f"Backup directory '{backup_dir}' does not exist.")
 
