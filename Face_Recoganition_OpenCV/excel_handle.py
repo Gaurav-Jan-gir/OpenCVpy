@@ -1,4 +1,5 @@
 from openpyxl import Workbook, load_workbook , utils
+from openpyxl.worksheet.dimensions import ColumnDimension
 from datetime import datetime
 import time
 import sys
@@ -58,30 +59,40 @@ class Excel_handle:
         confidence = round((1-confidence) * 100, 2)  # Convert to percentage
         if row_num is None:
             self.ws.append([id, name, confidence, 1,dt])
-            for col, val in zip(['A', 'B', 'C', 'D', 'E'], [str(id), name, str(confidence), '1', dt]):
-                if col not in self.ws.column_dimensions:
-                    self.ws.column_dimensions[col].width = len(val) + 3
-                else:
-                    self.ws.column_dimensions[col].width = max(len(val) + 3, self.ws.column_dimensions[col].width)
+            row_num = self.ws.max_row
             
-            count = self.ws.cell(row=row_num, column=4).value
-            if self.timeGapInSeconds(self.ws.cell(row=row_num, column=4+count).value, dt) < tg:
-                print("Duplicate entry detected. Skipping...")
-                return
-            self.ws.cell(row=row_num, column=3).value = min(self.ws.cell(row=row_num, column=3).value, confidence)
-            cl = utils.get_column_letter(5+count)
-            self.ws.cell(row=row_num, column=4).value = count + 1
-            self.ws.cell(row=row_num, column=5+count).value = dt
-            if cl not in self.ws.column_dimensions:
-                self.ws.column_dimensions[cl].width = len(dt) + 3
-            else:
-                self.ws.column_dimensions[cl].width = max(len(dt) + 3, self.ws.column_dimensions[cl].width)
+        count = self.ws.cell(row=row_num, column=4).value 
+        if not isinstance(count,int):
+            count = 0   
+        previous_time = self.ws.cell(row=row_num, column=4+count).value
+        if isinstance(previous_time, str) and self.timeGapInSeconds(previous_time, dt) < tg:
+            print("Duplicate entry detected. Skipping...")
+            return
+        existing_conf = self.ws.cell(row=row_num, column=3).value
+        if not isinstance(existing_conf, (int, float)):
+            existing_conf = confidence
+        self.ws.cell(row=row_num, column=3).value = min(existing_conf, confidence)
+        self.ws.cell(row=row_num, column=4).value = count + 1
+        self.ws.cell(row=row_num, column=5+count).value = dt
+
+        for col, val in zip(['A', 'B', 'C', 'D', utils.get_column_letter(5 + count)], [str(id), name, str(confidence), str(count + 1), dt]):
+            width = len(str(val)) + 3
+            dim = self.ws.column_dimensions.get(col)
+            if dim is None:
+                self.ws.column_dimensions[col] = ColumnDimension(self.ws, col)
+            self.ws.column_dimensions[col].width = max(self.ws.column_dimensions[col].width or 0, width)
+
+        
         self.wb.save(self.path)
             
     def timeGapInSeconds(self, old_time, new_time):
-        old_time = datetime.strptime(old_time, "%d/%m/%Y - %H:%M:%S")
-        new_time = datetime.strptime(new_time, "%d/%m/%Y - %H:%M:%S")
-        return (new_time - old_time).total_seconds()
+        try:
+            old_dt = datetime.strptime(old_time, "%d/%m/%Y - %H:%M:%S")
+            new_dt = datetime.strptime(new_time, "%d/%m/%Y - %H:%M:%S")
+            return (new_dt - old_dt).total_seconds()
+        except Exception as e:
+            print(f"Error in timeGapInSeconds: {e}")
+            return float('inf')  # Treat invalid comparison as very large gap
     
     def read_excel(self,row,column):
         return self.ws.cell(row,column).value;
@@ -122,3 +133,13 @@ class Excel_handle:
             else:
                 entries.append(ex_val)
         return entries    
+    
+    def increment_entry_count(self, row_num, val = 1):
+        if row_num is not None:
+            count = self.ws.cell(row=row_num, column=4).value
+            if not isinstance(count, int):
+                count = 0
+            self.ws.cell(row=row_num, column=4).value = count + val
+            self.wb.save(self.path)
+            return count + val
+        return None

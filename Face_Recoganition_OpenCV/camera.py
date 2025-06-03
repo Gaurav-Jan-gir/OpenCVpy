@@ -2,10 +2,17 @@ import cv2 as cv
 from face_recognition import face_locations, face_encodings
 from interFace_msg import message
 import os
+import sys
 
+def get_safe_data_path():
+    base_dir = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__))
+    data_path = os.path.join(base_dir, 'data')
+    os.makedirs(data_path, exist_ok=True)
+    return data_path
 class Camera:
     def __init__(self):
-        self.path = os.path.join(os.getcwd(), 'data')
+        self.path = get_safe_data_path()
+        os.makedirs(self.path, exist_ok=True)  # Ensure folder exists
         self.isSaved = False
         self.cam = cv.VideoCapture(0)
         
@@ -79,8 +86,8 @@ class Camera:
     def img_write(image, path , convert_to_bgr=False):
         if convert_to_bgr:
             image = cv.cvtColor(image, cv.COLOR_RGB2BGR)
-        if os.path.dirname(path) and not os.path.exists(path):
-            os.makedirs(path)
+        if os.path.dirname(path) and not os.path.exists(os.path.dirname(path)):
+            os.makedirs(os.path.dirname(path))
         cv.imwrite(path, image)
         
     @staticmethod

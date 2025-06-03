@@ -1,9 +1,15 @@
 import os
+import sys
 from numpy import save as np_save
 from MatchData import matchData
 import interFace_msg as interFace
 from camera import Camera
 
+def get_data_dir():
+        base_path = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__))
+        data_dir = os.path.join(base_path, 'data')
+        os.makedirs(data_dir, exist_ok=True)
+        return data_dir
 class saveData:
     def __init__(self,imag, load_data=None, showConfidence = False ,threshold_confidence=0.7):
         self.name = ""
@@ -18,7 +24,7 @@ class saveData:
         self.encode()
     
     def save_img(self,encoding):
-        data_dir = os.path.join(os.getcwd(), 'data')
+        data_dir = get_data_dir()
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
         while True:
@@ -60,22 +66,23 @@ class saveData:
                     interFace.message("Aborting saving current data.")
                     self.flag = False
                     continue
-            elif( matcher.result is not None and matcher.result[3] >= self.threshold_confidence):
+            else:
                 # No match found, ask for new name and ID
                 self.name , self.id = interFace.input_data()
                 self.save_img(encoding)
                 self.flag = True
             
-            
+    
 
     def changeAllMatchData(self, name, id):
-        data_dir = os.path.join(os.getcwd(), 'data')
+        data_dir = get_data_dir()
         if os.path.exists(data_dir):
             for file in os.listdir(data_dir):
                 if file.startswith(f'{name}_{id}_'):
                     old_path = os.path.join(data_dir, file)
                     new_path = os.path.join(data_dir, f'{self.name}_{self.id}_{file.split("_")[-1]}')
                     os.rename(old_path, new_path)
+
 
     
         

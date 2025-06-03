@@ -1,10 +1,18 @@
 import cv2 as cv
 import os
 import datetime
+import sys
+
+def get_safe_data_path():
+    base_dir = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__))
+    data_path = os.path.join(base_dir, 'data','captured_camera_frames')
+    os.makedirs(data_path, exist_ok=True)
+    return data_path
 
 class Capture_camera_frames:
     def __init__(self):
-        self.path = os.path.join(os.getcwd(), 'capture_frames')
+        self.path = get_safe_data_path()
+        os.makedirs(self.path, exist_ok=True)  # Ensure folder exists
         self.fps = 30  # Default frames per second
         if not os.path.exists(self.path):
             os.makedirs(self.path)
@@ -24,6 +32,7 @@ class Capture_camera_frames:
             return
         
         i=0
+        self.fps = max(self.fps, 6)  # Ensure minimum FPS is 6
         
         
         while True:
@@ -37,8 +46,9 @@ class Capture_camera_frames:
             
             img_path = os.path.join(self.path, f'img_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}')+f'_{i}.jpg'
             i += 1
-            cv.imwrite(img_path, frame)
-            q.put(img_path)  # Add the image path to the queue
+            if(i%(int(self.fps/6))==0):
+                cv.imwrite(img_path, frame)
+                q.put(img_path)  # Add the image path to the queue
             if key == ord('q'):
                 print("Capture cancelled.")
                 break
