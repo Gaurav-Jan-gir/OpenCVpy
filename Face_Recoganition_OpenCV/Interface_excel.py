@@ -1,6 +1,6 @@
 from multiprocessing import Process, Queue
 import os
-from MatchData import matchData
+from MatchData import match
 from SaveData import saveData
 from LoadData import loadData
 from camera import Camera
@@ -19,9 +19,7 @@ class interFace:
     def __init__(self, excel_path, config_path):
         self.path = get_safe_data_path()
         os.makedirs(self.path, exist_ok=True)  # Extra safety
-
         self.config = self.load_config(config_path)
-        os.makedirs(self.path, exist_ok=True)  # Ensure folder exists
         self.load_data = loadData()
         self.confidence_match = self.config["confidence_match"]
         self.save_confidence = self.config["confidence_save"]
@@ -99,9 +97,12 @@ class interFace:
             message("Image file does not exist. Please provide a valid image path.", input_key=True)
             return
         saveStatus = saveData(image_path,self.load_data,self.showConfidence,self.save_confidence)
-        if saveStatus.flag:
+        if saveStatus.flag != 0:
             print("User registered successfully")
-            self.load_data = loadData()
+            if saveStatus.flag == 1 or saveStatus.flag == 2:
+                self.load_data.append_data_in_burst(saveStatus.new_data, saveStatus.new_labels)
+            else:
+                self.load_data = loadData() 
         message("", input_key=True)
         return
 
@@ -111,50 +112,50 @@ class interFace:
         print("2. Recognition by Capturing Frames on Key Press")
         print("Press any other key to Go Back to Main Menu")
 
-        choice = input("Enter your choice: ").strip()
-        while choice in ['1', '2']:
+        choice = input("Enter your choice: ")
+
+        tg = None
+        while tg is None:
             try:
                 tg = int(input("Enter time (seconds) for valid duplicate gap (recognition logic): "))
                 if tg <= 0:
                     print("Time must be a positive integer. Please try again.")
-                    continue
-                break
+                    tg = None
             except ValueError:
-                print("Invalid input.")
+                print("Invalid input. Please enter a number.")
 
         if choice == '1':
-            self.real_time_recognition(os.path.join(os.getcwd(), 'capture_frames'),tg)
+            self.real_time_recognition(tg)
         elif choice == '2':
             self.capture_on_keypress(tg)
         else:
             return
 
-    def capture_on_keypress(self,tg):
-        print("Starting Recognition... Press 'q' to quit.")
-
-        while True:
-            cam = Camera()
-            cam.capture()
-
+    def capture_on_keypress(self, tg):
+        print("Starting Recognition... Press 's' to save, 'q' to quit.")
+        cam = Camera()  # Create camera ONCE outside the loop
+        try:
+            while True:
+                cam.capture()
+                if cam.isSaved:
+                    cropped_faces, cropped_face_locations = Camera.crop_face(os.path.join(self.path, 'temp.jpg'))
+                    for cropped_face, location in zip(cropped_faces, cropped_face_locations):
+                        matched = match(Camera.convert_to_rgb(cropped_face),self.load_data)
+                        if matched is not None and matched[3] < self.confidence_match:
+                            try:
+                                self.ex.write_to_excel(matched[0], matched[1], matched[3],tg)   
+                            except PermissionError as e:
+                                print(f"Permission Error: {e}. Please close the Excel file and try again.")
+                                input("Press any key to continue...")
+                                return
+                else:
+                    break  # Exit if user pressed 'q'
+        finally:
+            cam.destroy()  # ✅ Always cleanup camera
             if cam.isSaved:
-                cropped_face, cropped_face_locations = Camera.crop_face(os.path.join(self.path, 'temp.jpg'))
-                for cropped_face, location in zip(cropped_face, cropped_face_locations):
-                    cropped_face_path = os.path.join(self.path, 'cropped.jpg')
-                    Camera.img_write(cropped_face, cropped_face_path)
-                    matcher = matchData(cropped_face_path, load_data=self.load_data)
-                    matched = matcher.result
-                    if matched is not None and matched[3] < self.confidence_match:
-                        try:
-                            self.ex.write_to_excel(matched[0], matched[1], matched[3],tg)   
-                        except PermissionError as e:
-                            print(f"Permission Error: {e}. Please close the Excel file and try again.")
-                            input("Press any key to continue...")
-                            return
-            else:
-                cam.destroy()
-                break
+                os.remove(os.path.join(self.path, 'temp.jpg'))
 
-    def real_time_recognition(self, image_dir_path,tg):
+    def real_time_recognition(self,tg):
         try:
             fps = int(input("Enter the frames per second for capturing frames: "))
             if fps <= 0:
@@ -193,7 +194,6 @@ class interFace:
         self.ex.wb.save(os.path.join(self.path, 'data.xlsx'))
 
     def recognize_from_frames(self, tg, q, q_r):    
-
         while True:
 
             image_path = q.get()
@@ -214,13 +214,8 @@ class interFace:
             date = date[6:] + '/' + date[4:6] + '/' + date[:4]
             time = time[:2] + ':' + time[2:4] + ':' + time[4:]
 
-
             for face_img, location in zip(cropped_faces, cropped_locations):
-                cropped_face_path = os.path.join(self.path, 'cropped.jpg')
-                Camera.img_write(face_img, cropped_face_path)
-
-                matcher = matchData(cropped_face_path, load_data=self.load_data)
-                matched = matcher.result
+                matched = match(Camera.convert_to_rgb(face_img),self.load_data)
                 if matched and matched[3] < self.confidence_match:
                     q_r.put(('excel', matched[0], matched[1], matched[3], tg, f"{date} - {time}"))
 
@@ -351,6 +346,7 @@ class interFace:
                 if entry is None:
                     continue
                 print(entry)
+                count += 1
             print(f"Entries for {self.ex.read_excel(c_row, 2)} (ID = {self.ex.read_excel(c_row,1)}) : {count}")
         else:
             print(f"No entries found for {date}.")
@@ -423,13 +419,19 @@ class interFace:
             return
         self.query_all_entries_for_user(c_row, index=True)
         try:
+            max_index = self.ex.read_excel(c_row, 4)
+            if max_index is None or max_index < 1:
+                print("No entries found for this user.")
+                return
             index = int(input("Enter the index of the entry you want to delete: "))
-            if index < 1 or index > self.ex.read_excel(c_row,4):
+            if index < 1 or index > max_index:
                 print("Invalid index. Please try again.")
                 return
             col = index + 4  # Adjust for the first four columns
-            self.ex.write_excel(c_row, col, None)
-            self.ex.increment_entry_count(c_row,-1)
+            for cl in range(col, max_index + 4):
+                self.ex.write_excel(c_row, cl, self.ex.read_excel(c_row, cl + 1))
+            self.ex.ws.delete_cols(max_index + 4, 1)  # Delete the last column
+            self.ex.write_excel(c_row, 4, max_index - 1)  # Decrement the entry count
             print("Entry deleted successfully.")
         except ValueError:
             print("Invalid input. Please enter a number.")
