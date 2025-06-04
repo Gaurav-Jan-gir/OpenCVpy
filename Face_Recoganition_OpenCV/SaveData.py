@@ -1,7 +1,7 @@
 import os
 import sys
 from numpy import save as np_save
-from MatchData import matchData
+from MatchData import match
 import interFace_msg as interFace
 from camera import Camera
 
@@ -14,13 +14,15 @@ class saveData:
     def __init__(self,imag, load_data=None, showConfidence = False ,threshold_confidence=0.7):
         self.name = ""
         self.id = ""
-        self.flag = False
+        self.flag = 0
         self.load_data = load_data
         self.dno = 0
         self.path = ""
         self.imag = imag
         self.showConfidence = showConfidence  
-        self.threshold_confidence = threshold_confidence  
+        self.threshold_confidence = threshold_confidence 
+        self.new_data = []
+        self.new_labels = [] 
         self.encode()
     
     def save_img(self,encoding):
@@ -32,11 +34,13 @@ class saveData:
             if not os.path.exists(self.path):
                 break
             self.dno += 1
-        
+        self.new_data.append(encoding)
+        self.new_labels.append((self.name, self.id, self.dno))
         np_save(self.path, encoding)
 
     def encode(self):
-
+        self.new_data = []
+        self.new_labels = []
         cropped_faces, face_locations = Camera.crop_face(self.imag)
         encodings = Camera.get_face_encodings(self.imag,face_locations)
         if face_locations is None or encodings is None:
@@ -44,33 +48,28 @@ class saveData:
             return
         
         for i,(cropped_face,face_location, encoding) in enumerate(zip(cropped_faces,face_locations, encodings)):
-            cropped_face_path = os.path.join(os.getcwd(), 'data','cropped_face.jpg')
-            Camera.img_write(cropped_face,cropped_face_path, convert_to_bgr=True)
-            matcher = matchData(cropped_face_path, load_data=self.load_data)
+            cropped_face = Camera.convert_to_bgr(cropped_face)
+            matcher_result = match(Camera.convert_to_rgb(cropped_face),self.load_data)
             Camera.put_rectangle(self.imag, face_location, "","")
-            if matcher.result is not None and matcher.result[3] < self.threshold_confidence:
-                choice = interFace.interfaceSaveData(matcher.result[0], matcher.result[1], matcher.result[3],showConfidence=self.showConfidence) 
+            if matcher_result is not None and matcher_result[3] < self.threshold_confidence:
+                choice = interFace.interfaceSaveData(matcher_result[0], matcher_result[1], matcher_result[3],showConfidence=self.showConfidence) 
                 if choice == 1:
-                    self.name = matcher.result[0]
-                    self.id = matcher.result[1]
+                    self.name = matcher_result[0]
+                    self.id = matcher_result[1]
                     self.save_img(encoding)
-                    self.flag = True
-                    continue
                 elif choice == 2 or choice == 3:
                     self.name , self.id = interFace.input_data()
                     if choice == 3:
-                        self.changeAllMatchData(matcher.result[0], matcher.result[1])
+                        self.changeAllMatchData(matcher_result[0], matcher_result[1])
                     self.save_img(encoding)
-                    self.flag = True
                 elif choice == 0:
                     interFace.message("Aborting saving current data.")
-                    self.flag = False
-                    continue
+                self.flag = choice
             else:
                 # No match found, ask for new name and ID
                 self.name , self.id = interFace.input_data()
                 self.save_img(encoding)
-                self.flag = True
+                self.flag = 1
             
     
 

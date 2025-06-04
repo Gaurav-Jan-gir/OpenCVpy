@@ -1,6 +1,6 @@
 import sys
 import os
-from MatchData import matchData
+from MatchData import match
 from SaveData import saveData
 from LoadData import loadData
 from camera import Camera
@@ -98,10 +98,7 @@ class interFace:
         if cam.isSaved:
             cropped_faces , cropped_faces_locations = Camera.crop_face(os.path.join(self.path, 'temp.jpg'))
             for cropped_face, location in zip(cropped_faces, cropped_faces_locations):
-                cropped_face_path = os.path.join(self.path, 'cropped.jpg')
-                Camera.img_write(cropped_face , cropped_face_path)
-                matcher = matchData(cropped_face_path,load_data=self.load_data)
-                matched = matcher.result
+                matched = match(cropped_face, self.load_data)
                 if matched is not None and matched[3] < self.confidence_match:  # Assuming 0.5 is the threshold for a match
                     name, id , dno, conf = matched
                     print(f"User recognized: {name} (ID: {id})",end=' ')

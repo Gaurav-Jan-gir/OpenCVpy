@@ -23,3 +23,19 @@ class loadData:
                         message(f"Skipping invalid file (wrong shape): {filename}");
                 except Exception as e:
                     message(f"Skipping corrupted file: {filename}")
+
+    def append_new_data(self, encoding, name, id, dno):
+        # Append new data to the data list and labels
+        if isinstance(encoding, np.ndarray) and encoding.shape == (128,):
+            self.data.append(encoding)
+            self.labels.append((name, id, dno))
+        else:
+            message("Error: Encoding must be a numpy array with shape (128,)")
+
+    def append_data_in_burst(self, data, labels):
+        # Append multiple data entries at once
+        if len(data) != len(labels):
+            message("Error: Data and labels must have the same length")
+            return
+        for encoding, (name, id, dno) in zip(data, labels):
+            self.append_new_data(encoding, name, id, dno)

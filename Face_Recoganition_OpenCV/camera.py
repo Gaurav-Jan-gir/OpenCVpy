@@ -45,6 +45,7 @@ class Camera:
                 break
             elif key == ord('q'):
                 print("Capture cancelled.")
+                self.isSaved = False
                 break
 
 
@@ -119,3 +120,23 @@ class Camera:
             message("No face encodings found in the image.")
             return None
         return encodings
+    
+    def process_frame_in_memory(self, frame):
+        # Process frame directly without saving to disk
+        face_locations_list = face_locations(frame)
+        face_encodings_list = face_encodings(frame, face_locations_list)
+        return face_encodings_list, face_locations_list
+    
+    @staticmethod
+    def convert_to_bgr(image):
+        if image is None:
+            message("Error: No image provided for conversion.")
+            return None
+        return cv.cvtColor(image, cv.COLOR_RGB2BGR) if len(image.shape) == 3 else image
+    
+    @staticmethod
+    def convert_to_rgb(image):
+        if image is None:
+            message("Error: No image provided for conversion.")
+            return None
+        return cv.cvtColor(image, cv.COLOR_BGR2RGB) if len(image.shape) == 3 else image
