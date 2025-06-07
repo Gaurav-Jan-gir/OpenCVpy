@@ -53,16 +53,11 @@ class interFace:
             elif choice == 2:
                 imag = input("Enter the path of the image: ")
                 self.registerViaImage(imag)
+                message("Image registered successfully", input_key=True)
             elif choice == 3:
                 self.recognize()
             elif choice == 4:
-                if self.is_valid_path(os.path.join(self.path,f'{input("Enter User Name ")}_{input("Enter User ID ")}_0.npy')):
-                    print("The User Data Exists. ")
-                else:
-                    print("The User Data does not exist.")
-                print()
-                input("Press any key to continue...")
-                self.clear_screen()
+                print(self.checkUserData(input("Enter the user name: "), input("Enter the user ID: ")))
             elif choice==5:
                 self.configureConfidence()
                 self.config["confidence_match"] = self.confidence_match
@@ -95,16 +90,24 @@ class interFace:
     def registerViaImage(self, image_path):
         if not os.path.exists(image_path):
             message("Image file does not exist. Please provide a valid image path.", input_key=True)
-            return
+            return None
         saveStatus = saveData(image_path,self.load_data,self.showConfidence,self.save_confidence)
+        res = saveStatus.encode()
+        saveStatus.create_labels(res)
         if saveStatus.flag != 0:
             print("User registered successfully")
             if saveStatus.flag == 1 or saveStatus.flag == 2:
                 self.load_data.append_data_in_burst(saveStatus.new_data, saveStatus.new_labels)
             else:
                 self.load_data = loadData() 
-        message("", input_key=True)
-        return
+        return saveStatus.flag
+
+    def checkUserData(self, user_name, user_id):
+        file_path = os.path.join(self.path, f'{user_name}_{user_id}_0.npy')
+        if os.path.exists(file_path):
+            return f"User data for {user_name} (ID: {user_id}) exists."
+        else:
+            return f"User data for {user_name} (ID: {user_id}) does not exist."
 
     def recognize(self):
         print("🎥 Select Recognition Mode:")
@@ -130,6 +133,16 @@ class interFace:
             self.capture_on_keypress(tg)
         else:
             return
+        
+    def recoganize_k(self,img_path,tg):
+        cropped_faces, cropped_face_locations = Camera.crop_face(img_path)
+        flag = False
+        for cropped_face, location in zip(cropped_faces, cropped_face_locations):
+            matched = match(Camera.convert_to_rgb(cropped_face),self.load_data)
+            if matched is not None and matched[3] < self.confidence_match:
+                self.ex.write_to_excel(matched[0], matched[1], matched[3], tg, matched[4])
+                flag = True
+        return flag
 
     def capture_on_keypress(self, tg):
         print("Starting Recognition... Press 's' to save, 'q' to quit.")
@@ -138,16 +151,12 @@ class interFace:
             while True:
                 cam.capture()
                 if cam.isSaved:
-                    cropped_faces, cropped_face_locations = Camera.crop_face(os.path.join(self.path, 'temp.jpg'))
-                    for cropped_face, location in zip(cropped_faces, cropped_face_locations):
-                        matched = match(Camera.convert_to_rgb(cropped_face),self.load_data)
-                        if matched is not None and matched[3] < self.confidence_match:
-                            try:
-                                self.ex.write_to_excel(matched[0], matched[1], matched[3],tg)   
-                            except PermissionError as e:
-                                print(f"Permission Error: {e}. Please close the Excel file and try again.")
-                                input("Press any key to continue...")
-                                return
+                    try:
+                        self.recoganize_k(os.path.join(self.path, 'temp.jpg'), tg)
+                    except PermissionError as e:
+                        print(f"Permission Error: {e}. Please close the Excel file and try again.")
+                        input("Press any key to continue...")
+                        return
                 else:
                     break  # Exit if user pressed 'q'
         finally:

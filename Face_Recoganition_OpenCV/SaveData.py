@@ -23,7 +23,6 @@ class saveData:
         self.threshold_confidence = threshold_confidence 
         self.new_data = []
         self.new_labels = [] 
-        self.encode()
     
     def save_img(self,encoding):
         data_dir = get_data_dir()
@@ -46,11 +45,16 @@ class saveData:
         if face_locations is None or encodings is None:
             self.flag = False
             return
-        
+        res = []
         for i,(cropped_face,face_location, encoding) in enumerate(zip(cropped_faces,face_locations, encodings)):
             cropped_face = Camera.convert_to_bgr(cropped_face)
             matcher_result = match(Camera.convert_to_rgb(cropped_face),self.load_data)
             Camera.put_rectangle(self.imag, face_location, "","")
+            res.append((matcher_result,encoding))
+        return res
+            
+    def create_labels(self,res):
+        for matcher_result,encoding in res:
             if matcher_result is not None and matcher_result[3] < self.threshold_confidence:
                 choice = interFace.interfaceSaveData(matcher_result[0], matcher_result[1], matcher_result[3],showConfidence=self.showConfidence) 
                 if choice == 1:
@@ -70,7 +74,6 @@ class saveData:
                 self.name , self.id = interFace.input_data()
                 self.save_img(encoding)
                 self.flag = 1
-            
     
 
     def changeAllMatchData(self, name, id):
