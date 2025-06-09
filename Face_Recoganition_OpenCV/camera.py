@@ -92,7 +92,7 @@ class Camera:
         cv.imwrite(path, image)
         
     @staticmethod
-    def put_rectangle(image_path, location, name, id,convert_to_bgr=False):
+    def put_rectangle(image_path, location, name, id,convert_to_bgr=False,embedding=False):
         image = cv.imread(image_path)
         if image is None:
             message(f"Error: Could not load image from {image_path}")
@@ -103,6 +103,8 @@ class Camera:
         cv.rectangle(image, (left, top), (right, bottom), (0, 255, 0), 2)
         if name and id:
             cv.putText(image, f"{name} (ID: {id})", (left, top - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        if embedding:
+            return image
         cv.imshow("Recognized Face", image)
         cv.waitKey(0)
         cv.destroyAllWindows()

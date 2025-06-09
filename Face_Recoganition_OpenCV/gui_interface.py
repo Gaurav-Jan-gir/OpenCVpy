@@ -1,6 +1,40 @@
 from tkinter import *
 from tkinter import ttk
+from gui_functions import *
+from MatchData import match
+from LoadData import loadData
 
+def dateWidget(frame, row, column, label_text, entry_width=20):
+    label = Label(frame, text=label_text, font='consolas 12')
+    label.grid(row=row, column=column)
+    entry = Entry(frame, width=entry_width)
+    entry.grid(row=row, column=column+1)
+    return label, entry
+
+def timeWidget(frame, row, column, label_text, entry_width=20):
+    label = Label(frame, text=label_text, font='consolas 12')
+    label.grid(row=row, column=column)
+    entry = Entry(frame, width=entry_width)
+    entry.grid(row=row, column=column+1)
+    return label, entry
+
+def validate_date(date_str):
+    try:
+        day, month, year = map(int, date_str.split('/'))
+        if 1 <= day <= 31 and 1 <= month <= 12 and year > 0:
+            return True
+    except ValueError:
+        pass
+    return False
+
+def validate_time(time_str):
+    try:
+        hour, minute = map(int, time_str.split(':'))
+        if 0 <= hour < 24 and 0 <= minute < 60:
+            return True
+    except ValueError:
+        pass
+    return False
 
 class mButtons:
     def __init__(self,frame):
@@ -44,10 +78,13 @@ class Widgets:
         self.scales = []
         self.messages = []
         self.texts = []
+        self.list_boxes = []
+        self.frames = []
+        self.camera_frames = []
         self.buttons = mButtons(self.frame)
 
-    def clear_widgets(self):
-        for widget in self.labels+self.entries+self.check_boxes+self.scrollbars+self.scales+self.messages+self.texts:
+    def clear_widgets(self,cap):
+        for widget in self.labels+self.entries+self.check_boxes+self.scrollbars+self.scales+self.messages+self.texts+self.list_boxes+ self.frames + self.camera_frames:
             widget.grid_remove()
         self.labels.clear()
         self.entries.clear()
@@ -57,12 +94,24 @@ class Widgets:
         self.scales.clear()
         self.buttons.hide_all()
         self.messages.clear()
+        self.list_boxes.clear()
+        self.frames.clear()
+        destroy_camera(cap)
+        self.camera_frames.clear()
 
 class GUI:
     def __init__(self, root):
         self.root = root
         self.frame = ttk.Frame(root, padding=10)
         self.frame.grid(row=0, column=0, sticky="NS") 
+        self.cap = [None] 
+        self.control_flag = False
+        self.latest_image = [None]
+        self.faces = []
+        self.locations = []
+        self.encodings = []
+        self.data = loadData()
+        self.save_confidence = 0.4
         
         root.rowconfigure(0, weight=1)
         root.columnconfigure(0, weight=1)
@@ -73,7 +122,18 @@ class GUI:
         self.widgets = Widgets(self.frame)
 
     def clear_frame(self):
-        self.widgets.clear_widgets()
+        self.latest_image = None
+        self.control_flag = False
+        self.widgets.clear_widgets(self.cap)
+        self.cap = [None]
+
+    def clear_camera_frame(self):
+        self.control_flag = False
+        for camera_frame in self.widgets.camera_frames:
+            camera_frame.grid_remove()
+        destroy_camera(self.cap)
+        self.widgets.camera_frames.clear()
+        self.cap[0] = None
 
     def start_gui(self):
         root.title("Face Recognition")
@@ -100,11 +160,14 @@ class GUI:
         self.clear_frame()
         self.widgets.labels.append(Label(self.frame, text="Camera Capture", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.texts.append(Text(self.frame, width=40, height=17))
-        self.widgets.texts[-1].insert(END,"\n\n\n\n\n\n\n\n                 Camera\n\n\n\n\n\n\n\n")
-        self.widgets.texts[-1].configure(font='consolas 12')
-        self.widgets.texts[-1].configure(state=DISABLED)
-        self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
+        self.control_flag = True
+        cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
+        self.widgets.camera_frames.append(cframe)
+        # self.widgets.texts.append(Text(self.frame, width=40, height=17))
+        # self.widgets.texts[-1].insert(END,"\n\n\n\n\n\n\n\n                 Camera\n\n\n\n\n\n\n\n")
+        # self.widgets.texts[-1].configure(font='consolas 12')
+        # self.widgets.texts[-1].configure(state=DISABLED)
+        # self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
         self.widgets.labels.append(Label(self.frame,text='Enter Details',font = 'consolas 16'))
         self.widgets.labels[-1].grid(row = 1,column = 4, columnspan = 4)
         self.widgets.labels.append(Label(self.frame, text="Enter ID : ", font='consolas 12'))
@@ -117,8 +180,47 @@ class GUI:
         self.widgets.entries[-1].grid(column=6, row=3)
         buttons_text = ['Register','Update','Capture','Recapture','Back','Main Menu']
         buttons_position = [(4, 5), (4, 6), (5, 1), (5, 2), (5, 5), (5, 6)]
-        buttons_command = [lambda: print("Register Button Pressed"), lambda: print("Update Button Pressed"), lambda: print("Capture Button Pressed"), lambda: print("Recapture Button Pressed"), self.register_gui, self.start_gui]
+        buttons_command = [lambda: print("Register Button Pressed"), lambda: print("Update Button Pressed"), self.cam_reg_gui_capture , self.cam_reg_gui_recapture, self.register_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+
+    def cam_reg_gui_capture(self):
+        self.faces,self.locations,self.encodings = get_cropped_faces_locations(self.latest_image[0])
+        self.put_rectangle()
+    
+    def put_rectangle(self):
+        if self.faces is not [None]:
+            image,matched = match_image(self.faces[-1], self.locations[-1], self.data, self.save_confidence)
+            self.clear_camera_frame()
+            self.widgets.camera_frames.append(cam_reg_gui_capture(Frame(self.frame, width=40, height=17), image, row=1, column=0, rowspan=4, columnspan=4))
+            if matched is not None:
+                self.widgets.entries[0].delete(0, END)
+                self.widgets.entries[0].insert(0, str(matched[1]))
+                
+                self.widgets.entries[1].delete(0, END)
+                self.widgets.entries[1].insert(0, str(matched[0]))
+            
+            self.faces.pop()
+            self.locations.pop()
+                
+
+    def cam_reg_gui_recapture(self):
+        self.clear_camera_frame()
+        self.faces.clear()
+        self.locations.clear()
+        self.control_flag = True
+        cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
+        self.widgets.camera_frames.append(cframe)
+
+    def cam_reg_gui_register(self):
+        if self.widgets.entries[0].get() == "" or self.widgets.entries[1].get() == "":
+            message = "Please enter both ID and Name."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=6, columnspan=4)
+            return
+        new_data,new_labels = save_image_data(self.encodings[-1],self.widgets.entries[1].get(), self.widgets.entries[0].get(), self.data, showConfidence=True, threshold_confidence=self.save_confidence)
+        self.data.append_data_in_burst(new_data, new_labels)
+        self.encodings.pop()
+        self.put_rectangle()
 
     def img_reg_gui(self):
         root.title("Image Capture")
@@ -263,9 +365,10 @@ class GUI:
         self.widgets.texts[-1].configure(font = 'consolas 12')
         self.widgets.texts[-1].configure(state = DISABLED)
         self.widgets.texts[-1].grid(row=2, column=0, columnspan=3, rowspan=5)
-        self.widgets.buttons.create_button('date', 'Select Date', (1, 0), lambda: print("Select Date Button Pressed"))
-        self.widgets.buttons.hide('date')
-        self.widgets.buttons.grid('date', (7, 0), rowspan=1, columnspan=3)
+        label_date, entry_date = dateWidget(self.frame, 7, 0, "Enter Date (DD/MM/YYYY):")
+        self.widgets.labels.append(label_date)
+        self.widgets.entries.append(entry_date)
+        entry_date.grid(column=1, row=7, columnspan=2)
         buttons_text = ['Read','Back','Main Menu']
         buttons_position = [(8, 0), (8, 1), (8, 2)]
         buttons_command = [lambda: print("Read Button Pressed"), self.read_data_gui, self.start_gui]
@@ -283,12 +386,18 @@ class GUI:
         self.widgets.texts[-1].configure(font = 'consolas 12')
         self.widgets.texts[-1].configure(state = DISABLED)
         self.widgets.texts[-1].grid(row=2, column=0, columnspan=3, rowspan=5)
-        self.widgets.buttons.create_button('time_range_in', 'Initial Time', (1, 0), lambda: print("Initial Time Button Pressed"))
-        self.widgets.buttons.hide('time_range_in')
-        self.widgets.buttons.grid('time_range_in', (7, 0), rowspan=1, columnspan=3)
-        self.widgets.buttons.create_button('time_range_out', 'Final Time', (1, 0), lambda: print("Final Time Button Pressed"))
-        self.widgets.buttons.hide('time_range_out')
-        self.widgets.buttons.grid('time_range_out', (8, 0), rowspan=1, columnspan=3)
+        label_date_in, entry_date_in = dateWidget(self.frame, 7, 0, "Initial Date (DD/MM/YYYY):")
+        label_time_in, entry_time_in = timeWidget(self.frame, 7, 2, "Time (HH:MM:SS):")
+        self.widgets.labels.append(label_date_in)
+        self.widgets.entries.append(entry_date_in)
+        self.widgets.labels.append(label_time_in)
+        self.widgets.entries.append(entry_time_in)
+        label_date_out, entry_date_out = dateWidget(self.frame, 8, 0, "Final Date (DD/MM/YYYY):")
+        label_time_out, entry_time_out = timeWidget(self.frame, 8, 2, "Time (HH:MM:SS):")
+        self.widgets.labels.append(label_date_out)
+        self.widgets.entries.append(entry_date_out)
+        self.widgets.labels.append(label_time_out)
+        self.widgets.entries.append(entry_time_out)
         buttons_text = ['Read','Back','Main Menu']
         buttons_position = [(9, 0), (9, 1), (9, 2)]
         buttons_command = [lambda: print("Read Button Pressed"), self.read_data_gui, self.start_gui]
@@ -330,9 +439,15 @@ class GUI:
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.widgets.labels.append(Label(self.frame, text="Name : User1 ID :1", font='consolas 16'))
         self.widgets.labels[-1].grid(column=0, row=1, columnspan=2)
-        buttons_text = ['Date-Time','Date-Time Fill','Now','Create','Back','Main Menu']
-        buttons_position = [(2, 0), (2, 1), (2, 2),(3,0), (3, 1), (3, 2)]
-        buttons_command = [lambda: print("Date-Time Button Pressed"), lambda: print("Date-Time Fill Button Pressed"), lambda: print("Now Button Pressed"), lambda: print("Create Entry Button Pressed"), self.write_data_gui, self.start_gui]
+        date_label, date_entry = dateWidget(self.frame, 2, 0, "Enter Date (DD/MM/YYYY):")
+        time_label, time_entry = timeWidget(self.frame, 2, 2, "Enter Time (HH:MM:SS):")
+        self.widgets.labels.append(date_label)
+        self.widgets.entries.append(date_entry)
+        self.widgets.labels.append(time_label)
+        self.widgets.entries.append(time_entry)
+        buttons_text = ['Now','Create','Back','Main Menu']
+        buttons_position = [(3, 0),(3,1), (3, 2), (3, 3)]
+        buttons_command = [lambda: print("Now Button Pressed"), lambda: print("Create Entry Button Pressed"), self.write_data_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
 
     def delete_entry_gui(self):
@@ -342,9 +457,30 @@ class GUI:
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.widgets.labels.append(Label(self.frame, text="Name : User1 ID :1", font='consolas 16'))
         self.widgets.labels[-1].grid(column=0, row=1, columnspan=2)
-        buttons_text = ['Date-Time1','Date-Time2','Scrollable','Delete','Back','Main Menu']
-        buttons_position = [(2, 0), (3,0), (4, 0), (5, 0), (5,1), (5, 2)]
-        buttons_command = [lambda: print("Date-Time1 Button Pressed"), lambda: print("Date-Time2 Button Pressed"), lambda: print("Scrollable Button Pressed"), lambda: print("Delete Entry Button Pressed"), self.write_data_gui, self.start_gui]
+        
+        
+        self.widgets.frames.append(Frame(self.frame))
+        self.widgets.frames[-1].grid(column=0, row=4, columnspan=2, sticky='ew')
+        self.widgets.scrollbars.append(Scrollbar(self.widgets.frames[-1], orient=VERTICAL))
+        self.widgets.scrollbars[-1].pack(side=RIGHT, fill=Y)
+        self.widgets.list_boxes.append(Listbox(self.widgets.frames[-1], width=50, height=10 , font='consolas 12', selectmode=MULTIPLE, yscrollcommand=self.widgets.scrollbars[-1].set)) 
+        self.widgets.list_boxes[-1].insert(END, "Date 1 - Time 1")
+        self.widgets.list_boxes[-1].insert(END, "Date 2 - Time 2")
+        self.widgets.list_boxes[-1].insert(END, "Date 3 - Time 3")
+        self.widgets.list_boxes[-1].insert(END, "Date 1 - Time 1")
+        self.widgets.list_boxes[-1].insert(END, "Date 2 - Time 2")
+        self.widgets.list_boxes[-1].insert(END, "Date 3 - Time 3")
+        self.widgets.list_boxes[-1].insert(END, "Date 1 - Time 1")
+        self.widgets.list_boxes[-1].insert(END, "Date 2 - Time 2")
+        self.widgets.list_boxes[-1].insert(END, "Date 3 - Time 3")
+        self.widgets.list_boxes[-1].insert(END, "Date 1 - Time 1")
+        self.widgets.list_boxes[-1].insert(END, "Date 2 - Time 2")
+        self.widgets.list_boxes[-1].insert(END, "Date 3 - Time 3")
+        
+        self.widgets.list_boxes[-1].pack(side=LEFT, fill=BOTH, expand=True)
+        buttons_text = ['Delete','Back','Main Menu']
+        buttons_position = [(5, 0), (5,1), (5, 2)]
+        buttons_command = [ lambda: print("Delete Entry Button Pressed"), self.write_data_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
 
     def config_gui(self):
@@ -394,7 +530,7 @@ class GUI:
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
 
 root = Tk()
-root.geometry("800x600")
+root.geometry("1280x720")
 
 gui = GUI(root)
 gui.start_gui()

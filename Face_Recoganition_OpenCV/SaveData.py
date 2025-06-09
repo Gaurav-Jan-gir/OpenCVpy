@@ -24,7 +24,12 @@ class saveData:
         self.new_data = []
         self.new_labels = [] 
     
-    def save_img(self,encoding):
+    def save_img(self,encoding,name = None, id = None):
+        if name is not None:
+            self.name = name
+        if id is not None:
+            self.id = id
+        self.dno = 0
         data_dir = get_data_dir()
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)

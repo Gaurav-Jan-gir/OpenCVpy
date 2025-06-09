@@ -6,17 +6,19 @@ from PIL import Image, ImageTk
 import os
 import datetime
 
-def show_camera_embed(parent_frame,fps, img_dir):
+def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame):
     if(fps < 6):
         fps = 6
     cam_label = tk.Label(parent_frame)
     cam_label.grid(row=0, column=0, padx=10, pady=10)
-    latest_frame = [None]  
-    flag = [False]  # Use list for mutability
 
-    cap =cv.VideoCapture(0)
+    if cap[0] is None:
+        cap[0] = cv.VideoCapture(0)
+
     def update_frame():
-        ret, frame = cap.read()
+        if cap[0] is None:
+            return
+        ret, frame = cap[0].read()
         if ret:
             latest_frame[0] = frame
             frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
@@ -24,26 +26,27 @@ def show_camera_embed(parent_frame,fps, img_dir):
             img_tk = ImageTk.PhotoImage(img)
             cam_label.img_tk = img_tk
             cam_label.config(image=img_tk)
-        cam_label.after(int(1000/fps), update_frame)
-    update_frame()
-    
-    def save_image():
-        if latest_frame[0] is not None:
-            if not os.path.exists(img_dir):
-                os.makedirs(img_dir)
-            img_path = os.path.join(img_dir, 'latest_frame.jpg')
-            cv.imwrite(img_path, latest_frame[0])
-            flag[0] = True
-            
+        if control_flag:
+            cam_label.after(int(1000/fps), update_frame)
+    if control_flag:
+        update_frame()
 
-    save_btn = ttk.Button(parent_frame, text="Save Image", command=save_image)
-    save_btn.grid(row=1, column=0, padx=10, pady=10)
+def destroy_camera(cap):
+    if cap is not None and cap[0] is not None:
+        cap[0].release()
+    cv.destroyAllWindows()
 
-    def on_close():
-        cap.release()
-        parent_frame.quit()
-        return flag[0]
-    parent_frame.protocol("WM_DELETE_WINDOW", on_close)
+def show_image_embed(parent_frame, img):
+    img_label = tk.Label(parent_frame)
+    img_label.grid(row=0, column=0, padx=10, pady=10)
+    if img is not None:
+        img_rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+        img_pil = Image.fromarray(img_rgb)
+        img_tk = ImageTk.PhotoImage(img_pil)
+        img_label.img_tk = img_tk
+        img_label.config(image=img_tk)
+    else:
+        img_label.config(text="No image available")
 
 def cont_camera_capture(parent_frame, fps, img_dir):
     if fps < 6:
