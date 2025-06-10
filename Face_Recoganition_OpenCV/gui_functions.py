@@ -27,20 +27,33 @@ def cam_reg_gui_capture(parent_frame, image , row=0, column=0, padx=0, pady=0 , 
 def get_cropped_faces_locations(image):
     img_path = os.path.join(get_safe_data_path(),'img.jpg')
     if image is None:
-        return [None],[None]
+        return [None],[None],[None]
     Camera.img_write(image,img_path)
     faces,locations =  Camera.crop_face(img_path)
     encodings = Camera.get_face_encodings(img_path, locations)
     return faces, locations, encodings
 
-def match_image(face,location,existing_data,threshold_confidence):
+def match_image(face,location,existing_data,threshold_confidence,img=None):
     img_path = os.path.join(get_safe_data_path(),'img.jpg')
     if face is not None:
         matched = match(Camera.convert_to_rgb(face),existing_data)
-        if matched is not None and matched[3] < threshold_confidence:
+        if matched is not None and matched[3] is not None and matched[3] < threshold_confidence:
             image = Camera.put_rectangle(img_path,location,None,None,embedding=True)
             return image,matched
-    return None
+        elif matched is not None:
+            image = Camera.put_rectangle(img,location,None,None,embedding=True)
+            return image,None
+    return None,None
+
+def check_registration(name, id):
+    file_path = os.path.join(get_safe_data_path(), f'{name}_{id}_0.npy')
+    if os.path.exists(file_path):
+        return True
+    return False
+
+
+
+
 
 def save_image_data(encoding, name=None, id=None,existing_data=None,showConfidence=False, threshold_confidence=0.4):
     if existing_data is None:
@@ -52,3 +65,10 @@ def save_image_data(encoding, name=None, id=None,existing_data=None,showConfiden
 
 def destroy_camera(cap):
     ce.destroy_camera(cap)
+
+def read_image(image_path,convert_to_bgr = False):
+    return Camera.img_read(image_path, convert_to_bgr)
+
+def resize_image(image, width=None, height=None):
+    return Camera.resize_image(image, width, height)
+

@@ -11,7 +11,7 @@ def match(image,match_data):
     confidence_scores = face_distance(match_data.data, encoding[0])
     if len(confidence_scores) == 0:
         message("Comparison failed — no confidence scores generated.")
-        return None
+        return (None, None, None, None)
     max_confidence_index = 0
     max_confidence_score = confidence_scores[0]
     for i, score in enumerate(confidence_scores):

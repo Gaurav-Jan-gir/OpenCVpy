@@ -81,13 +81,20 @@ class saveData:
                 self.flag = 1
     
 
-    def changeAllMatchData(self, name, id):
+    def changeAllMatchData(self, name, id, new_name = None, new_id = None):
+        if new_name is None:
+            new_name = self.name
+        if new_id is None:
+            new_id = self.id
+        if name == new_name and id == new_id:
+            interFace.message("No changes made to the name or ID.")
+            return
         data_dir = get_data_dir()
         if os.path.exists(data_dir):
             for file in os.listdir(data_dir):
                 if file.startswith(f'{name}_{id}_'):
                     old_path = os.path.join(data_dir, file)
-                    new_path = os.path.join(data_dir, f'{self.name}_{self.id}_{file.split("_")[-1]}')
+                    new_path = os.path.join(data_dir, f'{new_name}_{new_id}_{file.split("_")[-1]}')
                     os.rename(old_path, new_path)
 
 
