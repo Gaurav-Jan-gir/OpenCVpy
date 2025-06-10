@@ -3,6 +3,7 @@ from tkinter import ttk
 from gui_functions import *
 from MatchData import match
 from LoadData import loadData
+from tkinter import filedialog
 
 def dateWidget(frame, row, column, label_text, entry_width=20):
     label = Label(frame, text=label_text, font='consolas 12')
@@ -35,6 +36,38 @@ def validate_time(time_str):
     except ValueError:
         pass
     return False
+
+def open_img_file(master, width=350, height=350, row=0, column=0, rowspan=1, columnspan=1):
+    # Fix the filetypes parameter syntax
+    file_path = filedialog.askopenfilename(
+        title="Select a File",
+        filetypes=[
+            ("Image files", "*.jpg *.jpeg *.png *.bmp *.tiff *.tif"),
+            ("JPEG files", "*.jpg *.jpeg"),
+            ("PNG files", "*.png"),
+            ("BMP files", "*.bmp"),
+            ("All files", "*.*")
+        ]
+    )
+    
+    if not file_path:
+        print("No file selected.")
+        return None,None
+    
+    try:
+        image = resize_image(read_image(file_path), width, height)
+        if image is not None:
+            return image,cam_reg_gui_capture(
+                Frame(master, width=40, height=17), 
+                image, 
+                row, column, 0, 0, rowspan, columnspan
+            )
+        else:
+            print("Failed to load image")
+            return None,None
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        return None,None
 
 class mButtons:
     def __init__(self,frame):
@@ -122,7 +155,7 @@ class GUI:
         self.widgets = Widgets(self.frame)
 
     def clear_frame(self):
-        self.latest_image = None
+        self.latest_image = [None]
         self.control_flag = False
         self.widgets.clear_widgets(self.cap)
         self.cap = [None]
@@ -161,13 +194,15 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Camera Capture", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.control_flag = True
-        cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
-        self.widgets.camera_frames.append(cframe)
-        # self.widgets.texts.append(Text(self.frame, width=40, height=17))
-        # self.widgets.texts[-1].insert(END,"\n\n\n\n\n\n\n\n                 Camera\n\n\n\n\n\n\n\n")
-        # self.widgets.texts[-1].configure(font='consolas 12')
-        # self.widgets.texts[-1].configure(state=DISABLED)
-        # self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
+        try:
+            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
+            self.widgets.camera_frames.append(cframe)
+        except Exception as e:
+            self.widgets.texts.append(Text(self.frame, width=40, height=17))
+            self.widgets.texts[-1].insert(END,f"\n\n\n\n\n\n\n\nError Acessing Camera : {e}\n\n\n\n\n\n\n\n")
+            self.widgets.texts[-1].configure(font='consolas 12')
+            self.widgets.texts[-1].configure(state=DISABLED)
+            self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
         self.widgets.labels.append(Label(self.frame,text='Enter Details',font = 'consolas 16'))
         self.widgets.labels[-1].grid(row = 1,column = 4, columnspan = 4)
         self.widgets.labels.append(Label(self.frame, text="Enter ID : ", font='consolas 12'))
@@ -180,29 +215,34 @@ class GUI:
         self.widgets.entries[-1].grid(column=6, row=3)
         buttons_text = ['Register','Update','Capture','Recapture','Back','Main Menu']
         buttons_position = [(4, 5), (4, 6), (5, 1), (5, 2), (5, 5), (5, 6)]
-        buttons_command = [lambda: print("Register Button Pressed"), lambda: print("Update Button Pressed"), self.cam_reg_gui_capture , self.cam_reg_gui_recapture, self.register_gui, self.start_gui]
+        buttons_command = [self.reg_gui_register, self.reg_gui_update, self.cam_reg_gui_capture , self.cam_reg_gui_recapture, self.register_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
 
     def cam_reg_gui_capture(self):
+        if self.latest_image[0] is None:
+            self.clear_status_messages(row=6, column=0)  # Clear messages at row 6, column 0
+            message = "No image captured. Please recapture."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=6, columnspan=4)
+            return
         self.faces,self.locations,self.encodings = get_cropped_faces_locations(self.latest_image[0])
         self.put_rectangle()
     
     def put_rectangle(self):
-        if self.faces is not [None]:
-            image,matched = match_image(self.faces[-1], self.locations[-1], self.data, self.save_confidence)
+        if self.faces is not [None] and not len(self.faces)==0:
+            image,self.matched = match_image(self.faces[-1], self.locations[-1], self.data, self.save_confidence,self.latest_image[0])
             self.clear_camera_frame()
             self.widgets.camera_frames.append(cam_reg_gui_capture(Frame(self.frame, width=40, height=17), image, row=1, column=0, rowspan=4, columnspan=4))
-            if matched is not None:
+            if self.matched is not None:
                 self.widgets.entries[0].delete(0, END)
-                self.widgets.entries[0].insert(0, str(matched[1]))
+                self.widgets.entries[0].insert(0, str(self.matched[1]))
                 
                 self.widgets.entries[1].delete(0, END)
-                self.widgets.entries[1].insert(0, str(matched[0]))
+                self.widgets.entries[1].insert(0, str(self.matched[0]))
             
             self.faces.pop()
             self.locations.pop()
-                
-
+        
     def cam_reg_gui_recapture(self):
         self.clear_camera_frame()
         self.faces.clear()
@@ -211,16 +251,50 @@ class GUI:
         cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
         self.widgets.camera_frames.append(cframe)
 
-    def cam_reg_gui_register(self):
+    def reg_gui_register(self, imag_reg = False):
         if self.widgets.entries[0].get() == "" or self.widgets.entries[1].get() == "":
+            self.clear_status_messages(row=6, column=0)  # Clear messages at row 6, column 0
             message = "Please enter both ID and Name."
             self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
             self.widgets.messages[-1].grid(column=0, row=6, columnspan=4)
             return
+        if len(self.encodings) == 0:
+            return
         new_data,new_labels = save_image_data(self.encodings[-1],self.widgets.entries[1].get(), self.widgets.entries[0].get(), self.data, showConfidence=True, threshold_confidence=self.save_confidence)
         self.data.append_data_in_burst(new_data, new_labels)
         self.encodings.pop()
-        self.put_rectangle()
+        if len(self.faces) != 0:
+            self.put_rectangle()
+        else:
+            self.clear_status_messages(row=6, column=0)  # Clear messages at row 6, column 0
+            message = "User Registered Successfully."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=6, columnspan=4) 
+            if not imag_reg:
+                self.cam_reg_gui_recapture()
+
+    def reg_gui_update(self, imag_reg = False):
+        if self.widgets.entries[0].get() == "" or self.widgets.entries[1].get() == "":
+            self.clear_status_messages(row=6, column=0)  # Clear messages at row 6, column 0
+            message = "Please enter both ID and Name."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=6, columnspan=4)
+            return
+        if len(self.encodings) == 0:
+            return
+        saveData.changeAllMatchData(self.matched[0],self.matched[1],self.widgets.entries[1].get(), self.widgets.entries[0].get())
+        new_data,new_labels = save_image_data(self.encodings[-1],self.widgets.entries[1].get(), self.widgets.entries[0].get(), self.data, showConfidence=True, threshold_confidence=self.save_confidence)
+        self.data.append_data_in_burst(new_data, new_labels)
+        self.encodings.pop()
+        if len(self.faces) != 0:
+            self.put_rectangle()
+        else:
+            self.clear_status_messages(row=6, column=0)  # Clear messages at row 6, column 0
+            message = "User Updated Successfully."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=6, columnspan=4) 
+            if not imag_reg:
+                self.cam_reg_gui_recapture()
 
     def img_reg_gui(self):
         root.title("Image Capture")
@@ -242,14 +316,30 @@ class GUI:
         self.widgets.labels[-1].grid(column=5, row=3)
         self.widgets.entries.append(Entry(self.frame, width=30))
         self.widgets.entries[-1].grid(column=6, row=3)
-        self.widgets.buttons.create_button('sel_img', 'Select Image', (4, 0), lambda: print("Select Image Button Pressed"))
+        self.widgets.buttons.create_button('sel_img', 'Select Image', (4, 0), self.sel_img)
         self.widgets.buttons.hide('sel_img')
         self.widgets.buttons.grid('sel_img', (5,1), rowspan=1, columnspan=3)
         buttons_text = ['Register','Update','Back','Main Menu']
         buttons_position = [(4, 5), (4, 6),  (5, 5), (5, 6)]
-        buttons_command = [lambda: print("Register Button Pressed"), lambda: print("Update Button Pressed"), self.register_gui, self.start_gui]
+        buttons_command = [lambda: self.reg_gui_register(True), lambda : self.reg_gui_update(True), self.register_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
     
+    def sel_img(self):
+        image,frame = open_img_file(self.frame, width=350, height=350, row=1, column=0, rowspan=4, columnspan=4)
+        if image is not None and frame is not None:
+            if len(self.widgets.texts) > 0:
+                self.widgets.texts[-1].grid_remove()
+                self.widgets.texts.pop()
+            self.widgets.camera_frames.append(frame)
+            self.latest_image[0] = image
+            self.faces,self.locations,self.encodings = get_cropped_faces_locations(self.latest_image[0])
+            self.put_rectangle()
+        else:
+            self.clear_status_messages(row=6, column=0)  # Clear messages at row 6, column 0
+            message = "No image selected."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=6, columnspan=4)
+
     def check_reg_gui(self):
         root.title("Check Registration")
         self.clear_frame()
@@ -263,12 +353,32 @@ class GUI:
         self.widgets.labels[-1].grid(column=1, row=2)
         self.widgets.entries.append(Entry(self.frame, width=30))
         self.widgets.entries[-1].grid(column=2, row=2)
-        self.widgets.messages.append(Message(self.frame, text="Registration Status", width=200, font='consolas 12'))
+        self.widgets.messages.append(Message(self.frame, text="         ", width=200, font='consolas 12'))
         self.widgets.messages[-1].grid(column=0, row=3, columnspan=4)
         buttons_text = ['Check','Back','Main Menu']
         buttons_position = [(4, 1), (4, 2), (4, 3)]
-        buttons_command = [lambda: print("Check Button Pressed"), self.register_gui, self.start_gui]
+        buttons_command = [self.check_registration, self.register_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+
+    def check_registration(self):
+        id_value = self.widgets.entries[0].get()
+        name_value = self.widgets.entries[1].get()
+        if id_value == "" or name_value == "":
+            self.clear_status_messages(row=3, column=0)
+            message = "Please enter both ID and Name."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=3, columnspan=4)
+            return
+        if check_registration(name_value, id_value):
+            self.clear_status_messages(row=3, column=0)
+            message = f"User {name_value} with ID {id_value} is registered."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=3, columnspan=4)
+        else:
+            self.clear_status_messages(row=3, column=0)
+            message = f"User {name_value} with ID {id_value} is not registered."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=3, columnspan=4)
 
     def recognize_gui(self):
         root.title("Recognize")
@@ -529,11 +639,65 @@ class GUI:
         buttons_command = [lambda: print("Save Button Pressed"), self.config_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
 
+    def clear_status_messages(self, row=None, column=None, clear_all=False):
+        """
+        Clear status messages based on grid position
+        
+        Args:
+            row: Specific row to clear (None = any row)
+            column: Specific column to clear (None = any column)
+            clear_all: If True, clear all messages regardless of position
+        """
+        i = 0
+        while i < len(self.widgets.messages):
+            try:
+                if clear_all:
+                    # Clear all messages
+                    self.widgets.messages[i].grid_remove()
+                    self.widgets.messages.pop(i)
+                    continue
+                
+                grid_info = self.widgets.messages[i].grid_info()
+                msg_row = grid_info.get('row')
+                msg_column = grid_info.get('column')
+                
+                # Check if message matches the criteria
+                should_clear = True
+                
+                if row is not None and msg_row != row:
+                    should_clear = False
+                
+                if column is not None and msg_column != column:
+                    should_clear = False
+                
+                if should_clear:
+                    self.widgets.messages[i].grid_remove()
+                    self.widgets.messages.pop(i)
+                else:
+                    i += 1
+                    
+            except:
+                # If grid_info fails, move to next message
+                i += 1
+
 root = Tk()
 root.geometry("1280x720")
 
 gui = GUI(root)
 gui.start_gui()
+
+# frm = ttk.Frame(root)
+# frm.grid(row=0, column=0, sticky="NS")
+
+
+
+
+
+
+
+
+
+
 
 
 root.mainloop()

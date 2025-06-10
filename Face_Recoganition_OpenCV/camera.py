@@ -84,6 +84,35 @@ class Camera:
         return cropped_faces, cropped_faces_locations
     
     @staticmethod
+    def img_read(path, convert_to_bgr=False):
+        if not os.path.exists(path):
+            message(f"Error: Image file {path} does not exist.")
+            return None
+        image = cv.imread(path)
+        if image is None:
+            message(f"Error: Could not read image from {path}.")
+            return None
+        if convert_to_bgr:
+            image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+        return image
+
+    @staticmethod
+    def resize_image(image, width=None, height=None):
+        if image is None:
+            message("Error: No image provided for resizing.")
+            return None
+        if width is None and height is None:
+            message("Error: At least one of width or height must be specified.")
+            return image
+        h, w = image.shape[:2]
+        if width is None:
+            width = int((height / h) * w)
+        elif height is None:
+            height = int((width / w) * h)
+        resized_image = cv.resize(image, (width, height))
+        return resized_image
+
+    @staticmethod
     def img_write(image, path , convert_to_bgr=False):
         if convert_to_bgr:
             image = cv.cvtColor(image, cv.COLOR_RGB2BGR)
@@ -93,7 +122,10 @@ class Camera:
         
     @staticmethod
     def put_rectangle(image_path, location, name, id,convert_to_bgr=False,embedding=False):
-        image = cv.imread(image_path)
+        if isinstance(image_path, str):
+            image = cv.imread(image_path)
+        else:
+            image = image_path
         if image is None:
             message(f"Error: Could not load image from {image_path}")
             return
