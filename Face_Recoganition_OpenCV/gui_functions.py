@@ -53,8 +53,6 @@ def check_registration(name, id):
 
 
 
-
-
 def save_image_data(encoding, name=None, id=None,existing_data=None,showConfidence=False, threshold_confidence=0.4):
     if existing_data is None:
         existing_data = []
@@ -71,4 +69,87 @@ def read_image(image_path,convert_to_bgr = False):
 
 def resize_image(image, width=None, height=None):
     return Camera.resize_image(image, width, height)
+
+def validate_date(date_str):
+    if date_str == "":
+        return True
+    try:
+        day, month, year = map(int, date_str.split('/'))
+        if 1 <= day <= 31 and 1 <= month <= 12 and year > 0:
+            return True
+    except ValueError:
+        pass
+    return False
+
+def validate_time(time_str):
+    if time_str == "":
+        return True
+    try:
+        hour, minute , seconds = map(int, time_str.split(':'))
+        if 0 <= hour < 24 and 0 <= minute < 60 and 0 <= seconds < 60:
+            return True
+    except ValueError:
+        pass
+    return False
+
+def get_all_date_time(ex,c_row,date_in, time_in, date_out,time_out):
+    # di_ ti_ do_ to_   - Read all Entries
+    # di_ ti_ do_ to    - Read Until last Date under time_out
+    # di_ ti_ do  to_   - Read Until Date date_out time 23:59:59
+    # di_ ti_ do  to    - Read Until Date date_out time time_out
+    # di_ ti  do_ to_   - Read from time time_in Date starting date
+    # di_ ti  do_ to    - Read from time time_in Date starting date to date Last Date time time_out
+    # di_ ti  do  to_   - Read from time time_in Date starting date to date date_out time 23:59:59
+    # di_ ti  do  to    - Read from time time_in Date starting date to date date_out time time_out
+    # di  ti_ do_ to_   - Read from date date_in time 00:00:00
+    # di  ti_ do_ to    - Read from date date_in time 00:00:00 to date Last Date time time_out
+    # di  ti_ do  to_   - Read from date date_in time 00:00:00 to date date_out time 23:59:59
+    # di  ti_ do  to    - Read from date date_in time 00:00:00 to date date_out time time_out
+    # di  ti  do_ to_   - Read from date date_in time 00:00:00 to date Last date time 23:59:59
+    # di  ti  do_ to    - Read from date date_in time 00:00:00 to date Last date time time_out
+    # di  ti  do  to_   - Read from date date_in time 00:00:00 to date date_out time 23:59:59
+    # di  ti  do  to    - Read from date date_in time 00:00:00 to date date_out time time_out
+    if not validate_date(date_in) or not validate_time(time_in):
+        return "", "", "", ""
+    if not validate_date(date_out) or not validate_time(time_out):
+        return "", "", "", ""
+    st_date,_ = ex.read_excel(c_row, 5).split(" - ")
+    en_date,_ = ex.read_excel(c_row, ex.ws.max_column).split(" - ")
+    if date_in == "":
+        date_in = st_date
+    if time_in == "":
+        time_in = "00:00:00"
+    if date_out == "":
+        date_out = en_date
+    if time_out == "":
+        time_out = "23:59:59"
+    return date_in, time_in, date_out, time_out
+
+def create_new_user_entry(id, name, ex):
+    ex.write_to_excel(name, id, 0, 1)
+    ex.delete_entry(ex.ws.max_row,5)
+    ex.increment_entry_count(ex.ws.max_row, -1)
+
+def delete_user_entries(ex, c_row, entries,list_box):
+    
+    shift = 0
+    mapped_entries = []
+
+    for entry in entries:
+        if list_box.get(entry) is not None:
+            mapped_entries.append(list_box.get(entry))
+
+    for cl in range(5, ex.ws.max_column + 1):
+        ex_val = ex.read_excel(c_row, cl)
+        if ex_val is not None and ex_val in mapped_entries:
+            shift += 1
+        else:
+            ex.write_excel(c_row, cl-shift, ex_val)
+    max_column = ex.ws.max_column - shift
+    for col in range(ex.ws.max_column, max_column, -1):
+        ex.write_excel(c_row, col, None)
+    ex.increment_entry_count(c_row, -shift)
+
+    
+    
 

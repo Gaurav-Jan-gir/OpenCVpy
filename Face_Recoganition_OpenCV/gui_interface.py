@@ -4,6 +4,8 @@ from gui_functions import *
 from MatchData import match
 from LoadData import loadData
 from tkinter import filedialog
+import json
+from excel_handle import Excel_handle
 
 def dateWidget(frame, row, column, label_text, entry_width=20):
     label = Label(frame, text=label_text, font='consolas 12')
@@ -19,23 +21,6 @@ def timeWidget(frame, row, column, label_text, entry_width=20):
     entry.grid(row=row, column=column+1)
     return label, entry
 
-def validate_date(date_str):
-    try:
-        day, month, year = map(int, date_str.split('/'))
-        if 1 <= day <= 31 and 1 <= month <= 12 and year > 0:
-            return True
-    except ValueError:
-        pass
-    return False
-
-def validate_time(time_str):
-    try:
-        hour, minute = map(int, time_str.split(':'))
-        if 0 <= hour < 24 and 0 <= minute < 60:
-            return True
-    except ValueError:
-        pass
-    return False
 
 def open_img_file(master, width=350, height=350, row=0, column=0, rowspan=1, columnspan=1):
     # Fix the filetypes parameter syntax
@@ -69,6 +54,22 @@ def open_img_file(master, width=350, height=350, row=0, column=0, rowspan=1, col
         print(f"Error processing image: {e}")
         return None,None
 
+def open_xlsx_file():
+    file_path = filedialog.askopenfilename(
+        title="Select an Excel File",
+        filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+    )
+    
+    if not file_path:
+        print("No file selected.")
+        return None
+    
+    try:
+        excel_handle = Excel_handle(file_path)
+        return excel_handle
+    except Exception as e:
+        print(f"Error opening Excel file: {e}")
+        return None
 class mButtons:
     def __init__(self,frame):
         self.frame = frame
@@ -137,6 +138,7 @@ class GUI:
         self.root = root
         self.frame = ttk.Frame(root, padding=10)
         self.frame.grid(row=0, column=0, sticky="NS") 
+        self.path = get_safe_data_path()
         self.cap = [None] 
         self.control_flag = False
         self.latest_image = [None]
@@ -144,7 +146,12 @@ class GUI:
         self.locations = []
         self.encodings = []
         self.data = loadData()
-        self.save_confidence = 0.4
+        self.config_path = os.path.join(self.path, 'config.json')
+        self.config = self.load_config(self.config_path)
+        self.confidence_match = self.config["confidence_match"]
+        self.save_confidence = self.config["confidence_save"]
+        self.showConfidence = self.config["show_confidence"]
+        self.ex = Excel_handle(os.path.join(self.path,'data.xlsx'))
         
         root.rowconfigure(0, weight=1)
         root.columnconfigure(0, weight=1)
@@ -153,6 +160,32 @@ class GUI:
             self.frame.rowconfigure(i, weight=1)
         self.frame.columnconfigure(0, weight=1) 
         self.widgets = Widgets(self.frame)
+
+    def load_config(self,config_path=None):
+        default_config = {
+            "confidence_match": 0.4,
+            "confidence_save": 0.4,
+            "show_confidence": False
+        }
+        if config_path is None:
+            config_path = self.config_path
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    user_config = json.load(f)
+                    default_config.update(user_config)
+            except Exception as e:
+                print(f"Error loading config: {e}")
+        return default_config
+
+    def save_config(self,config, config_path=None):
+        if config_path is None:
+            config_path = self.config_path
+        try:
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=4)
+        except Exception as e:
+            print(f"Error saving config: {e}")
 
     def clear_frame(self):
         self.latest_image = [None]
@@ -453,49 +486,35 @@ class GUI:
 
     def read_data_gui(self):
         root.title("Read Data")
+        user_id = self.widgets.entries[-1].get()
+        if user_id == "":
+            self.clear_status_messages(row=5, column=0)
+            message = "Please enter a valid ID."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=5, columnspan=2)
+            return
+        c_row = self.ex.get_row_number(user_id)
+        if c_row is None:
+            self.clear_status_messages(row=5, column=0)
+            message = f"No data found for ID {user_id}."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=5, columnspan=2)
+            return
         self.clear_frame()
+        user_name = self.ex.read_excel(c_row, 2)
         self.widgets.labels.append(Label(self.frame, text="Read Data", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.labels.append(Label(self.frame, text="Name : User1 ID :1", font='consolas 16'))
+        self.widgets.labels.append(Label(self.frame, text=f"Name : {user_name} (ID :{user_id})", font='consolas 16'))
         self.widgets.labels[-1].grid(column=0, row=1, columnspan=2)
-        buttons_text = ['Read On Date','Read on Time Range', 'Read all ','Back','Main Menu']
-        buttons_position = [(2,0),(3,0),(4,0),(5,0),(6,0)]
-        buttons_command = [ self.read_on_date_gui, self.read_on_time_range_gui, self.read_all_gui, self.op_data, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
-
-    def read_on_date_gui(self):
-        root.title("Read On Date")
-        self.clear_frame()
-        self.widgets.labels.append(Label(self.frame, text="Read On Date", font='consolas 24 bold'))
-        self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.labels.append(Label(self.frame, text="Name : User1 ID :1", font='consolas 16'))
-        self.widgets.labels[-1].grid(column=0, row=1, columnspan=2)
-        self.widgets.texts.append(Text(self.frame, width = 40, height = 17))
-        self.widgets.texts[-1].insert(END,'Date 1 - Time 1\nDate 2 - Time 2\nDate 3 - Time 3\n')
+        entries = self.ex.get_all_entries(c_row)
+        self.widgets.texts.append(Text(self.frame, width = 40, height = 15))
+        for entry in entries:
+            self.widgets.texts[-1].insert(END, f"{entry}\n")
         self.widgets.texts[-1].configure(font = 'consolas 12')
         self.widgets.texts[-1].configure(state = DISABLED)
-        self.widgets.texts[-1].grid(row=2, column=0, columnspan=3, rowspan=5)
-        label_date, entry_date = dateWidget(self.frame, 7, 0, "Enter Date (DD/MM/YYYY):")
-        self.widgets.labels.append(label_date)
-        self.widgets.entries.append(entry_date)
-        entry_date.grid(column=1, row=7, columnspan=2)
-        buttons_text = ['Read','Back','Main Menu']
-        buttons_position = [(8, 0), (8, 1), (8, 2)]
-        buttons_command = [lambda: print("Read Button Pressed"), self.read_data_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
-
-    def read_on_time_range_gui(self):
-        root.title("Read On Time Range")
-        self.clear_frame()
-        self.widgets.labels.append(Label(self.frame, text="Read On Time Range", font='consolas 24 bold'))
-        self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.labels.append(Label(self.frame, text="Name : User1 ID :1", font='consolas 16'))
-        self.widgets.labels[-1].grid(column=0, row=1, columnspan=2)
-        self.widgets.texts.append(Text(self.frame, width = 40, height = 17))
-        self.widgets.texts[-1].insert(END,'Date 1 - Time 1\nDate 2 - Time 2\nDate 3 - Time 3\n')
-        self.widgets.texts[-1].configure(font = 'consolas 12')
-        self.widgets.texts[-1].configure(state = DISABLED)
-        self.widgets.texts[-1].grid(row=2, column=0, columnspan=3, rowspan=5)
+        self.widgets.texts[-1].grid(row=2, column=0, columnspan=3, rowspan=4)
+        self.widgets.labels.append(Label(self.frame, text= f"Total Entries : {len(entries)}", font='consolas 12'))
+        self.widgets.labels[-1].grid(row=6, column=0, columnspan=3)
         label_date_in, entry_date_in = dateWidget(self.frame, 7, 0, "Initial Date (DD/MM/YYYY):")
         label_time_in, entry_time_in = timeWidget(self.frame, 7, 2, "Time (HH:MM:SS):")
         self.widgets.labels.append(label_date_in)
@@ -510,44 +529,82 @@ class GUI:
         self.widgets.entries.append(entry_time_out)
         buttons_text = ['Read','Back','Main Menu']
         buttons_position = [(9, 0), (9, 1), (9, 2)]
-        buttons_command = [lambda: print("Read Button Pressed"), self.read_data_gui, self.start_gui]
+        buttons_command = [lambda: self.read_data_gui_read(c_row), self.op_data, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
 
-    def read_all_gui(self):
-        root.title("Read All Data")
-        self.clear_frame()
-        self.widgets.labels.append(Label(self.frame, text="Read All Data", font='consolas 24 bold'))
-        self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.labels.append(Label(self.frame, text="Name : User1 ID :1", font='consolas 16'))
-        self.widgets.labels[-1].grid(column=0, row=1, columnspan=2)
-        self.widgets.texts.append(Text(self.frame, width = 40, height = 17))
-        self.widgets.texts[-1].insert(END,'Date 1 - Time 1\nDate 2 - Time 2\nDate 3 - Time 3\n')
-        self.widgets.texts[-1].configure(font = 'consolas 12')
-        self.widgets.texts[-1].configure(state = DISABLED)
-        self.widgets.texts[-1].grid(row=2, column=0, columnspan=3, rowspan=5)
-        buttons_text = ['Back','Main Menu']
-        buttons_position = [(7, 0), (7, 1)]
-        buttons_command = [self.read_data_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+    def read_data_gui_read(self,c_row):
+        date_in = self.widgets.entries[-4].get()
+        time_in = self.widgets.entries[-3].get()
+        date_out = self.widgets.entries[-2].get()
+        time_out = self.widgets.entries[-1].get()
 
-    def write_data_gui(self):
+        date_in, time_in, date_out, time_out = get_all_date_time(self.ex, c_row, date_in, time_in, date_out, time_out)
+
+        if date_in == "" and time_in == "" and date_out == "" and time_out == "":
+            self.clear_status_messages(row=10, column=0)
+            message = "Please enter valid dates and times."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=10, columnspan=2)
+            return
+        
+        in_time = f"{date_in} - {time_in}"
+        fi_time = f"{date_out} - {time_out}"
+        entries = self.ex.get_entries_by_time_range(c_row, in_time, fi_time)
+        self.clear_status_messages(row=10, column=0)
+        self.widgets.texts[-1].configure(state=NORMAL)
+        self.widgets.texts[-1].delete(1.0, END)
+        for entry in entries:
+            self.widgets.texts[-1].insert(END, f"{entry}\n")
+        self.widgets.texts[-1].configure(state=DISABLED)
+        
+    def write_data_gui(self,c_row=None):
         root.title("Write Data")
+        if c_row is None:
+            user_id = self.widgets.entries[-1].get()
+            if user_id == "":
+                self.clear_status_messages(row=5, column=0)
+                message = "Please enter a valid ID."
+                self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+                self.widgets.messages[-1].grid(column=0, row=5, columnspan=2)
+                return
+            c_row = self.ex.get_row_number(user_id)
+            if c_row is None:
+                new_root = Tk()
+                fram = ttk.Frame(new_root, padding=10)
+                fram.grid(row=0, column=0, sticky="NS")
+                label = Label(fram, text="Enter Name ", font='consolas 16')
+                label.grid(column=0, row=0)
+                entry = Entry(fram, width=30)
+                entry.grid(column=1, row=0)
+                create_new_user_entry(label.get(), entry.get(), self.ex)
+                label.grid_remove()
+                entry.grid_remove()
+                fram.grid_remove()
+                new_root.destroy()
+                c_row = self.ex.max_row
+            user_name = self.ex.read_excel(c_row, 2)
+        else:
+            user_id = self.ex.read_excel(c_row, 1)
+            user_name = self.ex.read_excel(c_row, 2)
+        
         self.clear_frame()
         self.widgets.labels.append(Label(self.frame, text="Write Data", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.labels.append(Label(self.frame, text="Name : User1 ID :1", font='consolas 16'))
+        self.widgets.labels.append(Label(self.frame, text=f"Name : {user_name} (ID :{user_id})", font='consolas 16'))
         self.widgets.labels[-1].grid(column=0, row=1, columnspan=2)
+        self.widgets.labels.append(Label(self.frame, text="Write Data", font='consolas 24 bold'))
+        self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         buttons_text = ['Create Data','Delete Data','Back','Main Menu']
         buttons_position = [(2, 0), (3,0), (4, 0), (5, 0)]
-        buttons_command = [self.create_entry_gui, self.delete_entry_gui, self.op_data, self.start_gui]
+        buttons_command = [lambda : self.create_entry_gui(c_row), lambda: self.delete_entry_gui(c_row), self.op_data, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
 
-    def create_entry_gui(self):
+    def create_entry_gui(self, c_row):
         root.title("Create Entry")
         self.clear_frame()
         self.widgets.labels.append(Label(self.frame, text="Create Entry", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.labels.append(Label(self.frame, text="Name : User1 ID :1", font='consolas 16'))
+        self.widgets.labels.append(Label(self.frame, text=f"Name : {self.ex.read_excel(c_row,2)} (ID :{self.ex.read_excel(c_row,1)})", font='consolas 16'))
         self.widgets.labels[-1].grid(column=0, row=1, columnspan=2)
         date_label, date_entry = dateWidget(self.frame, 2, 0, "Enter Date (DD/MM/YYYY):")
         time_label, time_entry = timeWidget(self.frame, 2, 2, "Enter Time (HH:MM:SS):")
@@ -557,42 +614,79 @@ class GUI:
         self.widgets.entries.append(time_entry)
         buttons_text = ['Now','Create','Back','Main Menu']
         buttons_position = [(3, 0),(3,1), (3, 2), (3, 3)]
-        buttons_command = [lambda: print("Now Button Pressed"), lambda: print("Create Entry Button Pressed"), self.write_data_gui, self.start_gui]
+        buttons_command = [self.create_entry_gui_now, lambda: self.create_entry_gui_create(c_row),lambda : self.write_data_gui(c_row), self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
 
-    def delete_entry_gui(self):
+    def create_entry_gui_now(self):
+        from datetime import datetime
+        now = datetime.now()
+        date_str = now.strftime("%d/%m/%Y")
+        time_str = now.strftime("%H:%M:%S")
+        self.widgets.entries[-2].delete(0, END)
+        self.widgets.entries[-2].insert(0, date_str)
+        self.widgets.entries[-1].delete(0, END)
+        self.widgets.entries[-1].insert(0, time_str)
+
+    def create_entry_gui_create(self, c_row):
+        date_in = self.widgets.entries[-2].get()
+        time_in = self.widgets.entries[-1].get()
+
+        if date_in == "" or time_in == "":
+            self.clear_status_messages(row=4, column=0)
+            message = "Please enter both date and time."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=4, columnspan=2)
+            return
+        if not validate_date(date_in) or not validate_time(time_in):
+            self.clear_status_messages(row=4, column=0)
+            message = "Please enter valid date and time formats."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=4, columnspan=2)
+            return
+
+        entry_time = f"{date_in} - {time_in}"
+        self.ex.write_excel(c_row, self.ex.ws.max_column+1,entry_time)
+        self.clear_status_messages(row=4, column=0)
+        message = "Entry created successfully."
+        self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+        self.widgets.messages[-1].grid(column=0, row=4, columnspan=2)
+
+    def delete_entry_gui(self,c_row):
         root.title("Delete Entry")
         self.clear_frame()
+        user_name = self.ex.read_excel(c_row, 2)
+        user_id = self.ex.read_excel(c_row, 1)
         self.widgets.labels.append(Label(self.frame, text="Delete Entry", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.labels.append(Label(self.frame, text="Name : User1 ID :1", font='consolas 16'))
+        self.widgets.labels.append(Label(self.frame, text=f"Name : {user_name} (ID :{user_id})", font='consolas 16'))
         self.widgets.labels[-1].grid(column=0, row=1, columnspan=2)
-        
-        
         self.widgets.frames.append(Frame(self.frame))
         self.widgets.frames[-1].grid(column=0, row=4, columnspan=2, sticky='ew')
         self.widgets.scrollbars.append(Scrollbar(self.widgets.frames[-1], orient=VERTICAL))
         self.widgets.scrollbars[-1].pack(side=RIGHT, fill=Y)
         self.widgets.list_boxes.append(Listbox(self.widgets.frames[-1], width=50, height=10 , font='consolas 12', selectmode=MULTIPLE, yscrollcommand=self.widgets.scrollbars[-1].set)) 
-        self.widgets.list_boxes[-1].insert(END, "Date 1 - Time 1")
-        self.widgets.list_boxes[-1].insert(END, "Date 2 - Time 2")
-        self.widgets.list_boxes[-1].insert(END, "Date 3 - Time 3")
-        self.widgets.list_boxes[-1].insert(END, "Date 1 - Time 1")
-        self.widgets.list_boxes[-1].insert(END, "Date 2 - Time 2")
-        self.widgets.list_boxes[-1].insert(END, "Date 3 - Time 3")
-        self.widgets.list_boxes[-1].insert(END, "Date 1 - Time 1")
-        self.widgets.list_boxes[-1].insert(END, "Date 2 - Time 2")
-        self.widgets.list_boxes[-1].insert(END, "Date 3 - Time 3")
-        self.widgets.list_boxes[-1].insert(END, "Date 1 - Time 1")
-        self.widgets.list_boxes[-1].insert(END, "Date 2 - Time 2")
-        self.widgets.list_boxes[-1].insert(END, "Date 3 - Time 3")
+        entries = self.ex.get_all_entries(c_row)
+        for entry in entries:
+            self.widgets.list_boxes[-1].insert(END, entry)
         
         self.widgets.list_boxes[-1].pack(side=LEFT, fill=BOTH, expand=True)
         buttons_text = ['Delete','Back','Main Menu']
         buttons_position = [(5, 0), (5,1), (5, 2)]
-        buttons_command = [ lambda: print("Delete Entry Button Pressed"), self.write_data_gui, self.start_gui]
+        buttons_command = [ lambda: self.delete_entry_gui_delete(c_row),lambda: self.write_data_gui(c_row), self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
 
+    def delete_entry_gui_delete(self, c_row):
+        selected_indices = self.widgets.list_boxes[-1].curselection()
+        if not selected_indices:
+            self.clear_status_messages(row=6, column=0)
+            message = "Please select at least one entry to delete."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=6, columnspan=2)
+            return
+        delete_user_entries(self.ex, c_row, selected_indices, self.widgets.list_boxes[-1])
+        for index in sorted(selected_indices, reverse=True):
+            self.widgets.list_boxes[-1].delete(index)
+        
     def config_gui(self):
         root.title("Settings")
         self.clear_frame()
@@ -609,35 +703,61 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Confidence Settings", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.widgets.check_boxes.append(Checkbutton(self.frame, text="Show Confidence", font='consolas 16'))
-        self.widgets.check_boxes[-1].select()
+        if self.show_confidence:
+            self.widgets.check_boxes[-1].select()
         self.widgets.check_boxes[-1].grid(column=0, row=1, columnspan=2)
         self.widgets.labels.append(Label(self.frame, text="Save Confidence Threshold", font='consolas 16'))
         self.widgets.labels[-1].grid(column=0, row=2, columnspan=1)
         self.widgets.scales.append(Scale(self.frame, orient='horizontal'))
-        self.widgets.scales[-1].set(60)
+        self.widgets.scales[-1].set((1- self.save_confidence) * 100)
         self.widgets.scales[-1].grid(column=1, row=2, columnspan=1, sticky='ew')
         self.widgets.labels.append(Label(self.frame, text="Match Confidence Threshold", font='consolas 16'))
         self.widgets.labels[-1].grid(column=0, row=3, columnspan=1)
         self.widgets.scales.append(Scale(self.frame, orient='horizontal'))
-        self.widgets.scales[-1].set(60)
+        self.widgets.scales[-1].set((1 - self.match_confidence) * 100)
         self.widgets.scales[-1].grid(column=1, row=3, columnspan=1, sticky='ew')
         buttons_text = ['Save','Back','Main Menu']
         buttons_position = [(4, 0), (4, 1), (4, 2)]
-        buttons_command = [lambda: print("Save Button Pressed"), self.config_gui, self.start_gui]
+        buttons_command = [self.config_conf_gui_save, self.config_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+
+    def config_conf_gui_save(self):
+        self.show_confidence = self.widgets.check_boxes[-1].var.get()
+        self.save_confidence = self.widgets.scales[-2].get()
+        self.match_confidence = self.widgets.scales[-1].get()
+        self.config['show_confidence'] = self.show_confidence
+        self.config['save_confidence'] = self.save_confidence
+        self.config['match_confidence'] = self.match_confidence
+        self.save_config(self.config)
+        
+        self.clear_status_messages(row=5, column=0)
+        message = "Settings saved successfully."
+        self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+        self.widgets.messages[-1].grid(column=0, row=5, columnspan=2)
 
     def config_load_gui(self):
         root.title("Load Data Settings")
         self.clear_frame()
         self.widgets.labels.append(Label(self.frame, text="Load Data Settings", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.buttons.create_button('load', 'Load Data', (1 ,1), lambda: print("Load Data Button Pressed"))
+        load = [self.ex]
+        self.widgets.buttons.create_button('load', 'Load Data', (1 ,1), lambda : self.config_load_gui_load(load))
         self.widgets.buttons.hide('load')
         self.widgets.buttons.grid('load', (1, 0), rowspan=1, columnspan=3)
         buttons_text = ['Save','Back','Main Menu']
         buttons_position = [(4, 0), (4, 1), (4, 2)]
-        buttons_command = [lambda: print("Save Button Pressed"), self.config_gui, self.start_gui]
+        buttons_command = [lambda: self.config_load_gui_save(load), self.config_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+
+    def config_load_gui_load(self,load):
+        ex_file = open_xlsx_file()
+        if ex_file is not None:
+            load[0] = ex_file
+
+    def config_load_gui_save(self,load):
+        self.ex = load[0]
+        self.widgets.messages.append(Message(self.frame, text="Data loaded successfully.", width=200, font='consolas 12'))
+        self.widgets.messages[-1].grid(column=0, row=5, columnspan=2)
 
     def clear_status_messages(self, row=None, column=None, clear_all=False):
         """
@@ -686,18 +806,8 @@ root.geometry("1280x720")
 gui = GUI(root)
 gui.start_gui()
 
+
 # frm = ttk.Frame(root)
 # frm.grid(row=0, column=0, sticky="NS")
-
-
-
-
-
-
-
-
-
-
-
 
 root.mainloop()
