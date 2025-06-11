@@ -132,7 +132,15 @@ class Excel_handle:
                 break
             else:
                 entries.append(ex_val)
-        return entries    
+        return entries   
+
+    def get_all_entries(self, c_row):
+        entries = []
+        for cl in range(5, self.ws.max_column + 1):
+            ex_val = self.read_excel(c_row, cl)
+            if ex_val is not None:
+                entries.append(ex_val)
+        return entries
     
     def increment_entry_count(self, row_num, val = 1):
         if row_num is not None:
@@ -143,3 +151,14 @@ class Excel_handle:
             self.wb.save(self.path)
             return count + val
         return None
+    
+    def delete_entry(self, row_num, column_num=None):
+        if row_num is not None:
+            if column_num is not None:
+                self.ws.cell(row=row_num, column=column_num).value = None
+            else:
+                for col in range(1, self.ws.max_column + 1):
+                    self.ws.cell(row=row_num, column=col).value = None
+            self.wb.save(self.path)
+            return True
+        return False
