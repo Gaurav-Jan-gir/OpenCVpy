@@ -52,10 +52,11 @@ class Excel_handle:
         return None
     
 
-    def write_to_excel(self,name, id, confidence,tg,dt = None):
+    def write_to_excel(self,name, id, confidence, tg ,dt = None):
         row_num = self.get_row_number(id)
         if dt is None:
             dt = datetime.now().strftime("%d/%m/%Y") + " - " + datetime.now().strftime("%H:%M:%S")
+        confidence = float(confidence)
         confidence = round((1-confidence) * 100, 2)  # Convert to percentage
         if row_num is None:
             self.ws.append([id, name, confidence, 1,dt])

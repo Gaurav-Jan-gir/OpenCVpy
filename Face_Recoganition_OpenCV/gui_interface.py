@@ -151,7 +151,9 @@ class GUI:
         self.confidence_match = self.config["confidence_match"]
         self.save_confidence = self.config["confidence_save"]
         self.showConfidence = self.config["show_confidence"]
+        self.tg = self.config["time_gap"]
         self.ex = Excel_handle(os.path.join(self.path,'data.xlsx'))
+        
         
         root.rowconfigure(0, weight=1)
         root.columnconfigure(0, weight=1)
@@ -165,7 +167,8 @@ class GUI:
         default_config = {
             "confidence_match": 0.4,
             "confidence_save": 0.4,
-            "show_confidence": False
+            "show_confidence": False,
+            "time_gap": 3600
         }
         if config_path is None:
             config_path = self.config_path
@@ -246,12 +249,12 @@ class GUI:
         self.widgets.labels[-1].grid(column=5, row=3)
         self.widgets.entries.append(Entry(self.frame, width=30))
         self.widgets.entries[-1].grid(column=6, row=3)
-        buttons_text = ['Register','Update','Capture','Recapture','Back','Main Menu']
-        buttons_position = [(4, 5), (4, 6), (5, 1), (5, 2), (5, 5), (5, 6)]
-        buttons_command = [self.reg_gui_register, self.reg_gui_update, self.cam_reg_gui_capture , self.cam_reg_gui_recapture, self.register_gui, self.start_gui]
+        buttons_text = ['Register','Update','Capture','Recapture','Skip Face','Back','Main Menu']
+        buttons_position = [(4, 5), (4, 6), (5, 1), (5, 2),(5,4), (5, 5), (5, 6)]
+        buttons_command = [self.reg_gui_register, self.reg_gui_update, self.cam_reg_gui_capture , self.cam_reg_gui_recapture,self.skip_face ,self.register_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
 
-    def cam_reg_gui_capture(self):
+    def cam_reg_gui_capture(self,put = False):
         if self.latest_image[0] is None:
             self.clear_status_messages(row=6, column=0)  # Clear messages at row 6, column 0
             message = "No image captured. Please recapture."
@@ -259,11 +262,13 @@ class GUI:
             self.widgets.messages[-1].grid(column=0, row=6, columnspan=4)
             return
         self.faces,self.locations,self.encodings = get_cropped_faces_locations(self.latest_image[0])
-        self.put_rectangle()
+        return self.put_rectangle(put)
     
-    def put_rectangle(self):
+    def put_rectangle(self,put= False):
         if self.faces is not [None] and not len(self.faces)==0:
             image,self.matched = match_image(self.faces[-1], self.locations[-1], self.data, self.save_confidence,self.latest_image[0])
+            if put:
+                return self.matched
             self.clear_camera_frame()
             self.widgets.camera_frames.append(cam_reg_gui_capture(Frame(self.frame, width=40, height=17), image, row=1, column=0, rowspan=4, columnspan=4))
             if self.matched is not None:
@@ -275,6 +280,12 @@ class GUI:
             
             self.faces.pop()
             self.locations.pop()
+
+    def skip_face(self):
+        if len(self.encodings) != 0:
+            self.encodings.pop()
+            if len(self.faces) != 0:
+                self.put_rectangle()
         
     def cam_reg_gui_recapture(self):
         self.clear_camera_frame()
@@ -352,9 +363,9 @@ class GUI:
         self.widgets.buttons.create_button('sel_img', 'Select Image', (4, 0), self.sel_img)
         self.widgets.buttons.hide('sel_img')
         self.widgets.buttons.grid('sel_img', (5,1), rowspan=1, columnspan=3)
-        buttons_text = ['Register','Update','Back','Main Menu']
-        buttons_position = [(4, 5), (4, 6),  (5, 5), (5, 6)]
-        buttons_command = [lambda: self.reg_gui_register(True), lambda : self.reg_gui_update(True), self.register_gui, self.start_gui]
+        buttons_text = ['Register','Update','Skip Face','Back','Main Menu']
+        buttons_position = [(4, 5), (4, 6), (5,4) ,(5, 5), (5, 6)]
+        buttons_command = [lambda: self.reg_gui_register(True), lambda : self.reg_gui_update(True),self.skip_face ,self.register_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
     
     def sel_img(self):
@@ -450,18 +461,22 @@ class GUI:
         self.clear_frame()
         self.widgets.labels.append(Label(self.frame, text="Keypress Recognition", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.texts.append(Text(self.frame, width=40, height=17))
-        self.widgets.texts[-1].insert(END,"\n\n\n\n\n\n\n\n                 Camera\n\n\n\n\n\n\n\n")
-        self.widgets.texts[-1].configure(font='consolas 12')
-        self.widgets.texts[-1].configure(state=DISABLED)
-        self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
+        self.control_flag = True
+        try:
+            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
+            self.widgets.camera_frames.append(cframe)
+        except Exception as e:
+            self.widgets.texts.append(Text(self.frame, width=40, height=17))
+            self.widgets.texts[-1].insert(END,f"\n\n\n\n\n\n\n\nError Acessing Camera : {e}\n\n\n\n\n\n\n\n")
+            self.widgets.texts[-1].configure(font='consolas 12')
+            self.widgets.texts[-1].configure(state=DISABLED)
+            self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
         self.widgets.labels.append(Label(self.frame,text='Last Recognised Users',font = 'consolas 16'))
         self.widgets.labels[-1].grid(row = 1,column = 4, columnspan = 2)
-        self.widgets.buttons.create_button('reco', 'Recognize', (1 ,1), lambda: print("Recognize Button Pressed"))
+        self.widgets.buttons.create_button('reco', 'Recognize', (1 ,1), self.keypress_rec_gui_reco)
         self.widgets.buttons.hide('reco')
         self.widgets.buttons.grid('reco', (5, 0), rowspan=1, columnspan=2)
         self.widgets.texts.append(Text(self.frame, width = 30, height = 16))
-        self.widgets.texts[-1].insert(END,"Name 1 : ID 1\nName 2 : ID 2\nName 3 : ID 3\n\n\n")
         self.widgets.texts[-1].configure(font='consolas 12')
         self.widgets.texts[-1].configure(state=DISABLED)
         self.widgets.texts[-1].grid(row = 2,column = 4,rowspan = 3, columnspan = 2)
@@ -469,6 +484,15 @@ class GUI:
         buttons_position = [(5, 2), (5, 4)]
         buttons_command = [self.recognize_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+
+    def keypress_rec_gui_reco(self):
+        matched = self.cam_reg_gui_capture(True)
+        if matched is not None:
+            self.widgets.texts[-1].configure(state = NORMAL)
+            self.widgets.texts[-1].insert(END,f"Name: {matched[0]} ID: {matched[1]}"+f" Confidence: {((1-matched[3])*100):.2f}% \n" if self.showConfidence else "\n")
+            self.widgets.texts[-1].configure(state = DISABLED)
+            self.ex.write_to_excel(matched[0],matched[1],matched[2],self.tg)
+
     
     def op_data(self):
         root.title("Operate Data")
@@ -692,11 +716,42 @@ class GUI:
         self.clear_frame()
         self.widgets.labels.append(Label(self.frame, text="Settings", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        buttons_text = ['Confidence','Load Data','Back']
-        buttons_position = [(1, 0), (2, 0), (3, 0)]
-        buttons_command = [self.config_conf_gui, self.config_load_gui, self.start_gui]
+        buttons_text = ['Confidence','Load Data','Time Gap','Back']
+        buttons_position = [(1, 0), (2, 0), (3, 0),(4,0)]
+        buttons_command = [self.config_conf_gui, self.config_load_gui,self.time_gap_config ,self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
-    
+
+    def time_gap_config(self):
+        root.title("Time Gap Configuration")
+        self.clear_frame()
+        self.widgets.labels.append(Label(self.frame, text="Time Gap between two recognitions(in seconds) ", font='consolas 24 bold'))
+        self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
+        self.widgets.entries.append(Entry(self.frame, width = 7))
+        self.widgets.entries[-1].grid(column = 2, row = 0)
+        self.widgets.entries[-1].insert(END,self.tg)
+        buttons_text = ['Save', 'Back', 'Main Menu']
+        buttons_position = [(2,0),(2,1),(2,2)]
+        buttons_command = [self.tg_save , self.config_gui, self.start_gui]
+        self.widgets.buttons.create_buttons(buttons_text,buttons_position,buttons_command)
+
+    def tg_save(self):
+        self.tg = self.widgets.entries[-1].get()
+        try:
+            self.tg = int(self.tg)
+            if self.tg < 0:
+                raise ValueError("Time gap must be positive.")
+            self.config['time_gap'] = self.tg
+            self.save_config(self.config)
+            self.clear_status_messages(row=6, column=0)
+            message = "Time gap updated successfully."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=6, columnspan=2)
+        except ValueError as e:
+            self.clear_status_messages(row=6, column=0)
+            message = f"Invalid input: {e}"
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
+            self.widgets.messages[-1].grid(column=0, row=6, columnspan=2)
+
     def config_conf_gui(self):
         root.title("Confidence Settings")
         self.clear_frame()
