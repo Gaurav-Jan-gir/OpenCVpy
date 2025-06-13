@@ -6,6 +6,10 @@ from LoadData import loadData
 from tkinter import filedialog
 import json
 from excel_handle import Excel_handle
+from collections import deque
+from multiprocessing import Process, Queue, Manager
+from threading import Thread
+import shutil
 
 def dateWidget(frame, row, column, label_text, entry_width=20):
     label = Label(frame, text=label_text, font='consolas 12')
@@ -153,6 +157,7 @@ class GUI:
         self.showConfidence = self.config["show_confidence"]
         self.tg = self.config["time_gap"]
         self.ex = Excel_handle(os.path.join(self.path,'data.xlsx'))
+        self.fps = 30
         
         
         root.rowconfigure(0, weight=1)
@@ -439,22 +444,85 @@ class GUI:
         self.clear_frame()
         self.widgets.labels.append(Label(self.frame, text="Real-time Recognition", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.texts.append(Text(self.frame, width=40, height=17))
-        self.widgets.texts[-1].insert(END,"\n\n\n\n\n\n\n\n                 Camera\n\n\n\n\n\n\n\n")
-        self.widgets.texts[-1].configure(font='consolas 12')
-        self.widgets.texts[-1].configure(state=DISABLED)
-        self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
+        self.control_flag = True
+        try:
+            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
+            self.widgets.camera_frames.append(cframe)
+        except Exception as e:
+            self.widgets.texts.append(Text(self.frame, width=40, height=17))
+            self.widgets.texts[-1].insert(END,f"\n\n\n\n\n\n\n\nError Acessing Camera : {e}\n\n\n\n\n\n\n\n")
+            self.widgets.texts[-1].configure(font='consolas 12')
+            self.widgets.texts[-1].configure(state=DISABLED)
+            self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
         self.widgets.labels.append(Label(self.frame,text='Last Recognised Users',font = 'consolas 16'))
         self.widgets.labels[-1].grid(row = 1,column = 4, columnspan = 2)
         self.widgets.texts.append(Text(self.frame, width = 30, height = 16))
-        self.widgets.texts[-1].insert(END,"Name 1 : ID 1\nName 2 : ID 2\nName 3 : ID 3\n\n\n")
         self.widgets.texts[-1].configure(font='consolas 12')
         self.widgets.texts[-1].configure(state=DISABLED)
         self.widgets.texts[-1].grid(row = 2,column = 4,rowspan = 3, columnspan = 2)
         buttons_text = ['Start','Stop','Back', 'Main Menu']
         buttons_position = [(5,0),(5,1),(5, 2), (5, 4)]
-        buttons_command = [lambda : print('Start') , lambda : print('Stop'), self.recognize_gui, self.start_gui]
+        buttons_command = [self.real_time_rec_gui_start , self.real_time_rec_gui_stop, self.recognize_gui, self.start_gui]
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+
+    def real_time_rec_gui_start(self):
+        self.clear_camera_frame()
+        self.control_flag = True
+        self.st = [deque()]
+        cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4, st=self.st, path_save=os.path.join(self.path,'captured_images'))
+        self.widgets.camera_frames.append(cframe)
+        self.qu = Queue()
+        self.real_time_rec(self.st[0], self.qu)
+        self.cap_process = Thread(target=self.poll_queue)
+        self.cap_process.daemon = True
+
+
+
+    def poll_queue(self):
+        try:
+            while not self.qu.empty():
+                matched = self.qu.get_nowait()
+                if matched is not None:
+                    self.widgets.texts[-1].configure(state=NORMAL)
+                    self.widgets.texts[-1].insert(END, f"Name: {matched[0]} ID: {matched[1]}" + f" Confidence: {((1-matched[3])*100):.2f}% \n" if self.showConfidence else "\n")
+                    self.widgets.texts[-1].configure(state=DISABLED)
+                    self.ex.write_to_excel(matched[0], matched[1], matched[2], self.tg)
+        except Exception as e:
+            print(f"Error in poll_queue: {e}")
+        finally:
+            if self.control_flag:
+                self.root.after(100, lambda: self.poll_queue())
+        
+
+    def real_time_rec_gui_stop(self):
+        self.control_flag = False
+        if hasattr(self, 'cap_process'):
+            self.cap_process.join(timeout=1)
+        self.st.clear()
+        self.qu.clear()
+        shutil.rmtree(os.path.join(self.path, 'captured_images'), ignore_errors=True)
+
+        self.clear_camera_frame()
+
+
+    def real_time_rec(self, st, qu):
+        while len(st) != 0:
+            img_path = st.pop()
+            image = read_image(img_path, convert_to_bgr=True)
+            if image is not None:
+                faces, locations, encodings = get_cropped_faces_locations(image)
+                while len(encodings) > 0:
+                    matched = match_image(faces[-1], locations[-1], self.data, self.confidence_match, image)
+                    faces.pop()
+                    locations.pop()
+                    encodings.pop()
+                    if matched is not None and matched[3] is not None and matched[3] < self.confidence_match:
+                        qu.put(matched)
+            import time
+            time.sleep(0.05)  # Adjust sleep time as needed
+                    
+                        
+
 
     def keypress_rec_gui(self):
         root.title("Keypress Recognition")
