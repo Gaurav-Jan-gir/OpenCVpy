@@ -13,10 +13,10 @@ def get_safe_data_path():
     os.makedirs(data_path, exist_ok=True)
     return data_path
 
-def camera_frame(frame, cap ,control_flag, row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1):
+def camera_frame(frame, cap ,control_flag, row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1, st = [None], path_save=None):
     frame.grid(row=row, column=column, padx=padx, pady=pady, rowspan=rowspan, columnspan=columnspan)
     latest_frame = [None]  # Use list for mutability
-    ce.show_camera_embed(frame, 60, cap, control_flag, latest_frame)
+    ce.show_camera_embed(frame, 60, cap, control_flag, latest_frame, st, path_save)
     return frame, latest_frame
 
 def cam_reg_gui_capture(parent_frame, image , row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1):

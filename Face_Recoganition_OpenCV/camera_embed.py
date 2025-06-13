@@ -6,7 +6,7 @@ from PIL import Image, ImageTk
 import os
 import datetime
 
-def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame):
+def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame, st = [None] ,path_save = None):
     if(fps < 6):
         fps = 6
     cam_label = tk.Label(parent_frame)
@@ -21,6 +21,14 @@ def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame):
         ret, frame = cap[0].read()
         if ret:
             latest_frame[0] = frame
+            if path_save is not None:
+                if not os.path.exists(path_save):
+                    os.makedirs(path_save)
+                file_name = datetime.datetime.now().strftime("img_%Y%m%d_%H%M%S.jpg")
+                img_path = os.path.join(path_save, file_name)
+                if st[0] is not None:
+                    st[0].append(img_path)
+                cv.imwrite(img_path, frame)
             frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
             img = Image.fromarray(frame_rgb)
             img_tk = ImageTk.PhotoImage(img)
