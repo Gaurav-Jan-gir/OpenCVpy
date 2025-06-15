@@ -29,7 +29,10 @@ def get_cropped_faces_locations(image):
     if image is None:
         return [None],[None],[None]
     Camera.img_write(image,img_path)
-    faces,locations =  Camera.crop_face(img_path)
+    res =  Camera.crop_face(img_path)
+    if res is None:
+        return [None],[None],[None]
+    faces,locations = res
     encodings = Camera.get_face_encodings(img_path, locations)
     return faces, locations, encodings
 

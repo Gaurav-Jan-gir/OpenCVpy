@@ -272,6 +272,8 @@ class GUI:
     def put_rectangle(self,put= False):
         if self.faces is not [None] and not len(self.faces)==0:
             image,self.matched = match_image(self.faces[-1], self.locations[-1], self.data, self.save_confidence,self.latest_image[0])
+            self.faces.pop()
+            self.locations.pop()
             if put:
                 return self.matched
             self.clear_camera_frame()
@@ -283,8 +285,7 @@ class GUI:
                 self.widgets.entries[1].delete(0, END)
                 self.widgets.entries[1].insert(0, str(self.matched[0]))
             
-            self.faces.pop()
-            self.locations.pop()
+            
 
     def skip_face(self):
         if len(self.encodings) != 0:
@@ -445,15 +446,15 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Real-time Recognition", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.control_flag = True
-        try:
-            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
-            self.widgets.camera_frames.append(cframe)
-        except Exception as e:
-            self.widgets.texts.append(Text(self.frame, width=40, height=17))
-            self.widgets.texts[-1].insert(END,f"\n\n\n\n\n\n\n\nError Acessing Camera : {e}\n\n\n\n\n\n\n\n")
-            self.widgets.texts[-1].configure(font='consolas 12')
-            self.widgets.texts[-1].configure(state=DISABLED)
-            self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
+        # try:
+        #     cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
+        #     self.widgets.camera_frames.append(cframe)
+        # except Exception as e:
+        #     self.widgets.texts.append(Text(self.frame, width=40, height=17))
+        #     self.widgets.texts[-1].insert(END,f"\n\n\n\n\n\n\n\nError Acessing Camera : {e}\n\n\n\n\n\n\n\n")
+        #     self.widgets.texts[-1].configure(font='consolas 12')
+        #     self.widgets.texts[-1].configure(state=DISABLED)
+        #     self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
         self.widgets.labels.append(Label(self.frame,text='Last Recognised Users',font = 'consolas 16'))
         self.widgets.labels[-1].grid(row = 1,column = 4, columnspan = 2)
         self.widgets.texts.append(Text(self.frame, width = 30, height = 16))
@@ -468,58 +469,62 @@ class GUI:
     def real_time_rec_gui_start(self):
         self.clear_camera_frame()
         self.control_flag = True
-        self.st = [deque()]
-        cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4, st=self.st, path_save=os.path.join(self.path,'captured_images'))
+        self.st = Manager().list()  # Use a Manager list for inter-process communication
+        cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4, st=[self.st], path_save=os.path.join(self.path,'captured_images'))
         self.widgets.camera_frames.append(cframe)
         self.qu = Queue()
-        self.real_time_rec(self.st[0], self.qu)
-        self.cap_process = Thread(target=self.poll_queue)
-        self.cap_process.daemon = True
 
+        self.rec_process = Process(target= self.real_time_rec, args=(self.st,self.qu,self.data,self.confidence_match))
+        self.rec_process.daemon = True
+        self.rec_process.start()
 
+        self.poll_queue()
 
     def poll_queue(self):
         try:
             while not self.qu.empty():
                 matched = self.qu.get_nowait()
                 if matched is not None:
-                    self.widgets.texts[-1].configure(state=NORMAL)
-                    self.widgets.texts[-1].insert(END, f"Name: {matched[0]} ID: {matched[1]}" + f" Confidence: {((1-matched[3])*100):.2f}% \n" if self.showConfidence else "\n")
-                    self.widgets.texts[-1].configure(state=DISABLED)
-                    self.ex.write_to_excel(matched[0], matched[1], matched[2], self.tg)
+                    if self.ex.write_to_excel(matched[0], matched[1], matched[2], self.tg):
+                        self.widgets.texts[-1].configure(state=NORMAL)
+                        self.widgets.texts[-1].insert(END, f"Name: {matched[0]} ID: {matched[1]}" + f" Confidence: {((1-matched[3])*100):.2f}% \n" if self.showConfidence else "\n")
+                        self.widgets.texts[-1].configure(state=DISABLED)
+                    
         except Exception as e:
             print(f"Error in poll_queue: {e}")
-        finally:
-            if self.control_flag:
-                self.root.after(100, lambda: self.poll_queue())
+        
+        if self.control_flag:
+            self.root.after(100, lambda: self.poll_queue())
         
 
     def real_time_rec_gui_stop(self):
         self.control_flag = False
-        if hasattr(self, 'cap_process'):
-            self.cap_process.join(timeout=1)
-        self.st.clear()
-        self.qu.clear()
+        if hasattr(self, 'rec_process') and self.rec_process.is_alive():
+            self.rec_process.terminate()
+            self.rec_process.join()
+        self.st[:] = []
+        self.qu.close()
         shutil.rmtree(os.path.join(self.path, 'captured_images'), ignore_errors=True)
 
         self.clear_camera_frame()
 
-
-    def real_time_rec(self, st, qu):
-        while len(st) != 0:
+    @staticmethod
+    def real_time_rec(st, qu, load_data, confidence_match):
+        while len(st) > 0:
             img_path = st.pop()
             image = read_image(img_path, convert_to_bgr=True)
             if image is not None:
                 faces, locations, encodings = get_cropped_faces_locations(image)
                 while len(encodings) > 0:
-                    matched = match_image(faces[-1], locations[-1], self.data, self.confidence_match, image)
+                    img, matched = match_image(faces[-1], locations[-1], load_data, confidence_match, image)
                     faces.pop()
                     locations.pop()
                     encodings.pop()
-                    if matched is not None and matched[3] is not None and matched[3] < self.confidence_match:
-                        qu.put(matched)
-            import time
-            time.sleep(0.05)  # Adjust sleep time as needed
+                    if matched is not None and matched[3] is not None and matched[3] < confidence_match:
+                        try:
+                            qu.put(matched)
+                        except Exception:
+                            return # Adjust sleep time as needed
                     
                         
 
@@ -555,11 +560,18 @@ class GUI:
 
     def keypress_rec_gui_reco(self):
         matched = self.cam_reg_gui_capture(True)
-        if matched is not None:
-            self.widgets.texts[-1].configure(state = NORMAL)
-            self.widgets.texts[-1].insert(END,f"Name: {matched[0]} ID: {matched[1]}"+f" Confidence: {((1-matched[3])*100):.2f}% \n" if self.showConfidence else "\n")
-            self.widgets.texts[-1].configure(state = DISABLED)
-            self.ex.write_to_excel(matched[0],matched[1],matched[2],self.tg)
+        while len(self.encodings) > 0:
+            self.encodings.pop()
+            if matched is not None:
+                if self.ex.write_to_excel(matched[0],matched[1],matched[2],self.tg):
+                    self.widgets.texts[-1].configure(state = NORMAL)
+                    self.widgets.texts[-1].insert(END,f"Name: {matched[0]} ID: {matched[1]}"+f" Confidence: {((1-matched[3])*100):.2f}% \n" if self.showConfidence else "\n")
+                    self.widgets.texts[-1].configure(state = DISABLED)
+            if len(self.encodings) > 0:
+                matched = self.put_rectangle(True)
+            else:
+                break
+                
 
     
     def op_data(self):
@@ -923,14 +935,17 @@ class GUI:
                 # If grid_info fails, move to next message
                 i += 1
 
-root = Tk()
-root.geometry("1280x720")
 
-gui = GUI(root)
-gui.start_gui()
+if __name__ == '__main__':
+
+    root = Tk()
+    root.geometry("1280x720")
+
+    gui = GUI(root)
+    gui.start_gui()
 
 
-# frm = ttk.Frame(root)
-# frm.grid(row=0, column=0, sticky="NS")
+    # frm = ttk.Frame(root)
+    # frm.grid(row=0, column=0, sticky="NS")
 
-root.mainloop()
+    root.mainloop()
