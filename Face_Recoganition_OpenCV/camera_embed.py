@@ -14,6 +14,8 @@ def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame, st = [None
 
     if cap[0] is None:
         cap[0] = cv.VideoCapture(0)
+        cap[0].set(cv.CAP_PROP_FRAME_WIDTH, 640)
+        cap[0].set(cv.CAP_PROP_FRAME_HEIGHT, 480)
 
     def update_frame():
         if cap[0] is None:

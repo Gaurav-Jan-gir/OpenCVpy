@@ -30,6 +30,8 @@ class Capture_camera_frames:
         if not cam.isOpened():
             print("Could not open camera. Please check your camera connection.")
             return
+        cam.set(cv.CAP_PROP_FRAME_WIDTH, 640)  # Set frame width
+        cam.set(cv.CAP_PROP_FRAME_HEIGHT, 480)
         
         i=0
         self.fps = max(self.fps, 6)  # Ensure minimum FPS is 6

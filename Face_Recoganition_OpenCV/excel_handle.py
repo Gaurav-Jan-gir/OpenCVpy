@@ -13,6 +13,7 @@ class Excel_handle:
             print("Failed to create or load the Excel file. Exiting...")
             sys.exit(1)
         self.ws = self.wb.active
+        self.previous_id = ""
 
     def create_excel_file(self):   
         if not os.path.exists(self.path):
@@ -54,6 +55,7 @@ class Excel_handle:
 
     def write_to_excel(self,name, id, confidence, tg ,dt = None):
         row_num = self.get_row_number(id)
+        
         if dt is None:
             dt = datetime.now().strftime("%d/%m/%Y") + " - " + datetime.now().strftime("%H:%M:%S")
         confidence = float(confidence)
@@ -66,9 +68,10 @@ class Excel_handle:
         if not isinstance(count,int):
             count = 0   
         previous_time = self.ws.cell(row=row_num, column=4+count).value
-        if isinstance(previous_time, str) and self.timeGapInSeconds(previous_time, dt) < tg:
+        if isinstance(previous_time, str) and self.timeGapInSeconds(previous_time, dt) < tg  and self.previous_id == id:
             print("Duplicate entry detected. Skipping...")
-            return
+            return False
+        self.previous_id = id
         existing_conf = self.ws.cell(row=row_num, column=3).value
         if not isinstance(existing_conf, (int, float)):
             existing_conf = confidence
@@ -85,6 +88,7 @@ class Excel_handle:
 
         
         self.wb.save(self.path)
+        return True
             
     def timeGapInSeconds(self, old_time, new_time):
         try:
