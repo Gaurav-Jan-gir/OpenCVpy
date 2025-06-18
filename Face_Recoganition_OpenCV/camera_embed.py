@@ -1,7 +1,5 @@
 import cv2 as cv
-from face_recognition import face_locations, face_encodings
 import tkinter as tk
-from tkinter import ttk
 from PIL import Image, ImageTk
 import os
 import datetime
@@ -22,6 +20,7 @@ def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame, st = [None
             return
         ret, frame = cap[0].read()
         if ret:
+            frame = cv.resize(frame, (640, 480))
             latest_frame[0] = frame
             if path_save is not None:
                 if not os.path.exists(path_save):
@@ -72,6 +71,7 @@ def cont_camera_capture(parent_frame, fps, img_dir):
     def update_frame():
         ret, frame = cap.read()
         if ret:
+            frame = cv.resize(frame, (640, 480))
             latest_frame[0] = frame
             count[0] += 1
             frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)

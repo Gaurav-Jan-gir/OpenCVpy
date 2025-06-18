@@ -153,6 +153,7 @@ def delete_user_entries(ex, c_row, entries,list_box):
         ex.write_excel(c_row, col, None)
     ex.increment_entry_count(c_row, -shift)
 
+
     
     
 

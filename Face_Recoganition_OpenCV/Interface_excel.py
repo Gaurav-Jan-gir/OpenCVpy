@@ -140,7 +140,7 @@ class interFace:
         for cropped_face, location in zip(cropped_faces, cropped_face_locations):
             matched = match(Camera.convert_to_rgb(cropped_face),self.load_data)
             if matched is not None and matched[3] < self.confidence_match:
-                self.ex.write_to_excel(matched[0], matched[1], matched[3], tg, matched[4])
+                self.ex.write_to_excel(matched[0], matched[1], matched[3], tg)
                 flag = True
         return flag
 
