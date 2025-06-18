@@ -59,7 +59,7 @@ source face_recognition_env/bin/activate
 ```bash
 # Install all required packages
 pip install opencv-python
-pip install face-recognition
+pip install face_recognition
 pip install openpyxl
 pip install numpy
 pip install pandas

@@ -1,14 +1,11 @@
 from tkinter import *
 from tkinter import ttk
 from gui_functions import *
-from MatchData import match
 from LoadData import loadData
 from tkinter import filedialog
 import json
 from excel_handle import Excel_handle
-from collections import deque
 from multiprocessing import Process, Queue, Manager
-from threading import Thread
 import shutil
 
 def dateWidget(frame, row, column, label_text, entry_width=20):
@@ -17,15 +14,12 @@ def dateWidget(frame, row, column, label_text, entry_width=20):
     entry = Entry(frame, width=entry_width)
     entry.grid(row=row, column=column+1)
     return label, entry
-
 def timeWidget(frame, row, column, label_text, entry_width=20):
     label = Label(frame, text=label_text, font='consolas 12')
     label.grid(row=row, column=column)
     entry = Entry(frame, width=entry_width)
     entry.grid(row=row, column=column+1)
     return label, entry
-
-
 def open_img_file(master, width=350, height=350, row=0, column=0, rowspan=1, columnspan=1):
     # Fix the filetypes parameter syntax
     file_path = filedialog.askopenfilename(
@@ -57,7 +51,6 @@ def open_img_file(master, width=350, height=350, row=0, column=0, rowspan=1, col
     except Exception as e:
         print(f"Error processing image: {e}")
         return None,None
-
 def open_xlsx_file():
     file_path = filedialog.askopenfilename(
         title="Select an Excel File",
@@ -74,6 +67,32 @@ def open_xlsx_file():
     except Exception as e:
         print(f"Error opening Excel file: {e}")
         return None
+    
+class keyBind:
+    def __init__(self, root):
+        self.root = root
+        self.bindings = {}
+
+    def bind_key(self, button, key):
+        if not key:
+            return
+        self.bindings[key.lower()] = button
+        self.root.bind(f'<Key-{key.lower()}>', lambda event: button.invoke())
+        self.root.bind(f'<Key-{key.upper()}>', lambda event: button.invoke())
+        if key.lower() == 'b':
+            self.root.bind('<BackSpace>', lambda event: button.invoke())
+
+    def unbind_key(self, key):
+        if not key:
+            return
+        if key.lower() in self.bindings:
+            self.root.unbind(f'<Key-{key.lower()}>')
+            self.root.unbind(f'<Key-{key.upper()}>')
+            del self.bindings[key.lower()]
+
+    def unbind_all(self):
+        for key in list(self.bindings.keys()):
+            self.unbind_key(key)
 class mButtons:
     def __init__(self,frame):
         self.frame = frame
@@ -84,11 +103,23 @@ class mButtons:
         self.bdrW = '4'
         self.padx = 10
         self.pady = 10
+        # Use the toplevel window for key bindings
+        self.key_binds = keyBind(frame.winfo_toplevel())
 
-    def create_button(self,button_name,button_text,button_position, button_command=None,padding=[0,0]):
-        self.buttons[button_name] = Button(self.frame, text=button_text, fg = self.fg, bg = self.bg, font = self.font, borderwidth=self.bdrW, command=button_command, padx=padding[0], pady=padding[1])
+    def create_button(self,button_name,button_text,button_position, button_command=None,padding=[0,0], key_bind=None):
+        if key_bind is None:
+            index = -1
+        else:
+            index = button_text.lower().find(key_bind)
+        # Always create the button, underline only if found
+        self.buttons[button_name] = Button(
+            self.frame, text=button_text, fg=self.fg, bg=self.bg, font=self.font,
+            borderwidth=self.bdrW, command=button_command, padx=padding[0], pady=padding[1], underline=index
+        )
+        if key_bind is not None and index != -1:
+            self.key_binds.bind_key(self.buttons[button_name], key_bind)
         self.grid(button_name, button_position)
-    
+
     def grid(self,button_name,button_position,rowspan=1,columnspan=1):
         if button_name in self.buttons:
             self.buttons[button_name].grid(row=button_position[0], column=button_position[1],padx=self.padx, pady=self.pady,sticky="EW", rowspan=rowspan, columnspan=columnspan)
@@ -96,15 +127,25 @@ class mButtons:
     def hide(self,button_name):
         if button_name in self.buttons:
             self.buttons[button_name].grid_remove()
+            # Unbind using the key if underline is set, else do nothing
+            underline_index = self.buttons[button_name].cget('underline')
+            if underline_index != -1:
+                key = self.buttons[button_name].cget('text')[underline_index]
+                self.key_binds.unbind_key(key)
 
-    def create_buttons(self,buttons_text, buttons_position, buttons_command=None):
+    def create_buttons(self,buttons_text, buttons_position,buttons_command=[],key_bindings=[]):
+        if len(buttons_command) == 0:
+            buttons_command = [None] * len(buttons_text)
+        if len(key_bindings) == 0:
+            key_bindings = [None] * len(buttons_text)
         for i in range(len(buttons_text)):
-            self.create_button(f"btn{i}", buttons_text[i], buttons_position[i], buttons_command[i])
+            self.create_button(f"btn{i}", buttons_text[i], buttons_position[i], buttons_command[i],key_bind = key_bindings[i])
 
     def hide_all(self):
         for button in self.buttons:
             self.buttons[button].grid_remove()
-
+        self.key_binds.unbind_all()
+        self.buttons.clear()  # Remove all button references
 class Widgets:
     def __init__(self, frame):
         self.frame = frame
@@ -139,6 +180,7 @@ class Widgets:
 class GUI:
     def __init__(self, root):
         self.root = root
+        self.root.bind('<Escape>', self.exit_gui)
         self.frame = ttk.Frame(root, padding=10)
         self.frame.grid(row=0, column=0, sticky="NS") 
         self.path = get_safe_data_path()
@@ -156,16 +198,18 @@ class GUI:
         self.showConfidence = self.config["show_confidence"]
         self.tg = self.config["time_gap"]
         self.ex = Excel_handle(os.path.join(self.path,'data.xlsx'))
-        self.fps = 30
-        
-        
-        root.rowconfigure(0, weight=1)
+        self.fps = 30 
+        self.root.rowconfigure(0, weight=1)
         root.columnconfigure(0, weight=1)
-
         for i in range(8):
             self.frame.rowconfigure(i, weight=1)
         self.frame.columnconfigure(0, weight=1) 
         self.widgets = Widgets(self.frame)
+
+    def exit_gui(self, event=None):  # Accept event argument for key binding
+        # TODO : Do you want to Quit
+        self.root.quit()
+
 
     def load_config(self,config_path=None):
         default_config = {
@@ -216,7 +260,8 @@ class GUI:
         buttons_text = ['Register', 'Recognize','Operate Data', 'Settings', 'Exit']
         buttons_position = [(1, 0), (2, 0), (3, 0), (4, 0),(5, 0)]
         buttons_command = [self.register_gui, self.recognize_gui, self.op_data ,self.config_gui, root.destroy]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['r', 'n', 'o', 's', 'e']  # Key bindings for buttons
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def register_gui(self):
         root.title("Register")
@@ -226,7 +271,8 @@ class GUI:
         buttons_text = ['Camera Capture', 'Image', 'Check', 'Back']
         buttons_position = [(1, 0), (2, 0), (3, 0), (4, 0)]
         buttons_command = [self.cam_reg_gui, self.img_reg_gui, self.check_reg_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['c', 'i', 'k', 'b']  # Key bindings for buttons
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def cam_reg_gui(self):
         root.title("Camera Capture")
@@ -235,7 +281,7 @@ class GUI:
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.control_flag = True
         try:
-            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
+            cframe, self.latest_image = camera_frame(Frame(self.frame), self.cap, self.control_flag, row=1, column=0, rowspan=4, columnspan=4)
             self.widgets.camera_frames.append(cframe)
         except Exception as e:
             self.widgets.texts.append(Text(self.frame, width=40, height=17))
@@ -256,9 +302,10 @@ class GUI:
         buttons_text = ['Register','Update','Capture','Recapture','Skip Face','Back','Main Menu']
         buttons_position = [(4, 5), (4, 6), (5, 1), (5, 2),(5,4), (5, 5), (5, 6)]
         buttons_command = [self.reg_gui_register, self.reg_gui_update, self.cam_reg_gui_capture , self.cam_reg_gui_recapture,self.skip_face ,self.register_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['g','u','a','p','s','b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
-    def cam_reg_gui_capture(self,put = False):
+    def cam_reg_gui_capture(self, put=False):
         if self.latest_image[0] is None:
             self.clear_status_messages(row=6, column=0)  # Clear messages at row 6, column 0
             message = "No image captured. Please recapture."
@@ -268,9 +315,9 @@ class GUI:
         self.faces,self.locations,self.encodings = get_cropped_faces_locations(self.latest_image[0])
         return self.put_rectangle(put)
     
-    def put_rectangle(self,put= False):
-        if self.faces is not [None] and not len(self.faces)==0:
-            image,self.matched = match_image(self.faces[-1], self.locations[-1], self.data, self.save_confidence,self.latest_image[0])
+    def put_rectangle(self, put=False):
+        if self.faces is not None and len(self.faces) > 0 and not (len(self.faces) == 1 and self.faces[0] is None):
+            image, self.matched = match_image(self.faces[-1], self.locations[-1], self.data, self.save_confidence, self.latest_image[0])
             self.faces.pop()
             self.locations.pop()
             if put:
@@ -284,8 +331,6 @@ class GUI:
                 self.widgets.entries[1].delete(0, END)
                 self.widgets.entries[1].insert(0, str(self.matched[0]))
             
-            
-
     def skip_face(self):
         if len(self.encodings) > 0:
             self.encodings.pop()
@@ -374,14 +419,15 @@ class GUI:
         self.widgets.labels[-1].grid(column=5, row=3)
         self.widgets.entries.append(Entry(self.frame, width=30))
         self.widgets.entries[-1].grid(column=6, row=3)
-        self.widgets.buttons.create_button('sel_img', 'Select Image', (4, 0), self.sel_img)
+        self.widgets.buttons.create_button('sel_img', 'Select Image', (4, 0), self.sel_img,key_bind= 'i')
         self.widgets.buttons.hide('sel_img')
-        self.widgets.buttons.grid('sel_img', (5,1), rowspan=1, columnspan=3)
+        self.widgets.buttons.grid('sel_img', (5,0), rowspan=1, columnspan=3)
         buttons_text = ['Register','Update','Skip Face','Back','Main Menu']
         buttons_position = [(4, 5), (4, 6), (5,4) ,(5, 5), (5, 6)]
         buttons_command = [lambda: self.reg_gui_register(True), lambda : self.reg_gui_update(True),self.skip_face ,self.register_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
-    
+        key_bindings = ['g','u','s','b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
+
     def sel_img(self):
         image,frame = open_img_file(self.frame, width=350, height=350, row=1, column=0, rowspan=4, columnspan=4)
         if image is not None and frame is not None:
@@ -416,7 +462,8 @@ class GUI:
         buttons_text = ['Check','Back','Main Menu']
         buttons_position = [(4, 1), (4, 2), (4, 3)]
         buttons_command = [self.check_registration, self.register_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['c','b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def check_registration(self):
         id_value = self.widgets.entries[0].get()
@@ -446,7 +493,8 @@ class GUI:
         buttons_text = ['Real-time Recognition', 'Keypress Recognition', 'Back']
         buttons_position = [(1, 0), (2, 0), (3, 0)]
         buttons_command = [self.real_time_rec_gui, self.keypress_rec_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['r','k','b']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def real_time_rec_gui(self):
         root.title("Real-time Recognition")
@@ -472,7 +520,8 @@ class GUI:
         buttons_text = ['Start','Stop','Back', 'Main Menu']
         buttons_position = [(5,0),(5,1),(5, 2), (5, 4)]
         buttons_command = [self.real_time_rec_gui_start , self.real_time_rec_gui_stop, self.recognize_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['t','p','b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def real_time_rec_gui_start(self):
         self.clear_camera_frame()
@@ -512,7 +561,6 @@ class GUI:
         if self.control_flag:
             self.root.after(100, lambda: self.poll_queue())
         
-
     def real_time_rec_gui_stop(self):
         self.control_flag = False
         if hasattr(self, 'rec_process') and self.rec_process.is_alive():
@@ -542,9 +590,6 @@ class GUI:
                         except Exception:
                             return # Adjust sleep time as needed
                     
-                        
-
-
     def keypress_rec_gui(self):
         root.title("Keypress Recognition")
         self.clear_frame()
@@ -562,7 +607,7 @@ class GUI:
             self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
         self.widgets.labels.append(Label(self.frame,text='Last Recognised Users',font = 'consolas 16'))
         self.widgets.labels[-1].grid(row = 1,column = 4, columnspan = 2)
-        self.widgets.buttons.create_button('reco', 'Recognize', (1 ,1), self.keypress_rec_gui_reco)
+        self.widgets.buttons.create_button('reco', 'Recognize', (1 ,1), self.keypress_rec_gui_reco,key_bind='r')
         self.widgets.buttons.hide('reco')
         self.widgets.buttons.grid('reco', (5, 0), rowspan=1, columnspan=2)
         self.widgets.texts.append(Text(self.frame, width = 30, height = 16))
@@ -572,7 +617,8 @@ class GUI:
         buttons_text = ['back', 'main menu']
         buttons_position = [(5, 2), (5, 4)]
         buttons_command = [self.recognize_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def keypress_rec_gui_reco(self):
         matched = self.cam_reg_gui_capture(True)
@@ -588,8 +634,6 @@ class GUI:
             else:
                 break
                 
-
-    
     def op_data(self):
         root.title("Operate Data")
         self.clear_frame()
@@ -602,7 +646,8 @@ class GUI:
         buttons_text = ['Read Data', 'Write Data', 'Back']
         buttons_position = [ (2, 0), (3, 0),(4, 0)]
         buttons_command = [ self.read_data_gui, self.write_data_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['r','w','b']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def read_data_gui(self):
         root.title("Read Data")
@@ -650,7 +695,8 @@ class GUI:
         buttons_text = ['Read','Back','Main Menu']
         buttons_position = [(9, 0), (9, 1), (9, 2)]
         buttons_command = [lambda: self.read_data_gui_read(c_row), self.op_data, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['r','b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def read_data_gui_read(self,c_row):
         date_in = self.widgets.entries[-4].get()
@@ -677,7 +723,7 @@ class GUI:
             self.widgets.texts[-1].insert(END, f"{entry}\n")
         self.widgets.texts[-1].configure(state=DISABLED)
         
-    def write_data_gui(self,c_row=None):
+    def write_data_gui(self, c_row=None):
         root.title("Write Data")
         if c_row is None:
             user_id = self.widgets.entries[-1].get()
@@ -717,7 +763,8 @@ class GUI:
         buttons_text = ['Create Data','Delete Data','Back','Main Menu']
         buttons_position = [(2, 0), (3,0), (4, 0), (5, 0)]
         buttons_command = [lambda : self.create_entry_gui(c_row), lambda: self.delete_entry_gui(c_row), self.op_data, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['c','d','b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def create_entry_gui(self, c_row):
         root.title("Create Entry")
@@ -735,7 +782,8 @@ class GUI:
         buttons_text = ['Now','Create','Back','Main Menu']
         buttons_position = [(3, 0),(3,1), (3, 2), (3, 3)]
         buttons_command = [self.create_entry_gui_now, lambda: self.create_entry_gui_create(c_row),lambda : self.write_data_gui(c_row), self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['n','c','b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def create_entry_gui_now(self):
         from datetime import datetime
@@ -771,7 +819,7 @@ class GUI:
         self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
         self.widgets.messages[-1].grid(column=0, row=4, columnspan=2)
 
-    def delete_entry_gui(self,c_row):
+    def delete_entry_gui(self, c_row):
         root.title("Delete Entry")
         self.clear_frame()
         user_name = self.ex.read_excel(c_row, 2)
@@ -793,7 +841,8 @@ class GUI:
         buttons_text = ['Delete','Back','Main Menu']
         buttons_position = [(5, 0), (5,1), (5, 2)]
         buttons_command = [ lambda: self.delete_entry_gui_delete(c_row),lambda: self.write_data_gui(c_row), self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['d','b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def delete_entry_gui_delete(self, c_row):
         selected_indices = self.widgets.list_boxes[-1].curselection()
@@ -815,7 +864,8 @@ class GUI:
         buttons_text = ['Confidence','Load Data','Time Gap','Back']
         buttons_position = [(1, 0), (2, 0), (3, 0),(4,0)]
         buttons_command = [self.config_conf_gui, self.config_load_gui,self.time_gap_config ,self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['c','l','t','b']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def time_gap_config(self):
         root.title("Time Gap Configuration")
@@ -828,7 +878,8 @@ class GUI:
         buttons_text = ['Save', 'Back', 'Main Menu']
         buttons_position = [(2,0),(2,1),(2,2)]
         buttons_command = [self.tg_save , self.config_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text,buttons_position,buttons_command)
+        key_bindings = ['s','b','m']
+        self.widgets.buttons.create_buttons(buttons_text,buttons_position,buttons_command, key_bindings)
 
     def tg_save(self):
         self.tg = self.widgets.entries[-1].get()
@@ -854,7 +905,7 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Confidence Settings", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.widgets.check_boxes.append(Checkbutton(self.frame, text="Show Confidence", font='consolas 16'))
-        if self.show_confidence:
+        if self.showConfidence:
             self.widgets.check_boxes[-1].select()
         self.widgets.check_boxes[-1].grid(column=0, row=1, columnspan=2)
         self.widgets.labels.append(Label(self.frame, text="Save Confidence Threshold", font='consolas 16'))
@@ -865,22 +916,24 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Match Confidence Threshold", font='consolas 16'))
         self.widgets.labels[-1].grid(column=0, row=3, columnspan=1)
         self.widgets.scales.append(Scale(self.frame, orient='horizontal'))
-        self.widgets.scales[-1].set((1 - self.match_confidence) * 100)
+        self.widgets.scales[-1].set((1 - self.confidence_match) * 100)
         self.widgets.scales[-1].grid(column=1, row=3, columnspan=1, sticky='ew')
         buttons_text = ['Save','Back','Main Menu']
         buttons_position = [(4, 0), (4, 1), (4, 2)]
         buttons_command = [self.config_conf_gui_save, self.config_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['s','b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def config_conf_gui_save(self):
-        self.show_confidence = self.widgets.check_boxes[-1].var.get()
-        self.save_confidence = self.widgets.scales[-2].get()
-        self.match_confidence = self.widgets.scales[-1].get()
-        self.config['show_confidence'] = self.show_confidence
-        self.config['save_confidence'] = self.save_confidence
-        self.config['match_confidence'] = self.match_confidence
+        # Use IntVar for checkboxes, so get() returns 1/0
+        show_conf = self.widgets.check_boxes[-1].var.get() if hasattr(self.widgets.check_boxes[-1], 'var') else self.widgets.check_boxes[-1].instate(['selected'])
+        self.showConfidence = bool(show_conf)
+        self.save_confidence = 1 - (self.widgets.scales[-2].get() / 100)
+        self.confidence_match = 1 - (self.widgets.scales[-1].get() / 100)
+        self.config['show_confidence'] = self.showConfidence
+        self.config['confidence_save'] = self.save_confidence
+        self.config['confidence_match'] = self.confidence_match
         self.save_config(self.config)
-        
         self.clear_status_messages(row=5, column=0)
         message = "Settings saved successfully."
         self.widgets.messages.append(Message(self.frame, text=message, width=200, font='consolas 12'))
@@ -892,13 +945,15 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Load Data Settings", font='consolas 24 bold'))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         load = [self.ex]
-        self.widgets.buttons.create_button('load', 'Load Data', (1 ,1), lambda : self.config_load_gui_load(load))
+        # Add key binding for the "Load Data" button (e.g., 'l')
+        self.widgets.buttons.create_button('load', 'Load Data', (1, 1), lambda: self.config_load_gui_load(load), key_bind='l')
         self.widgets.buttons.hide('load')
         self.widgets.buttons.grid('load', (1, 0), rowspan=1, columnspan=3)
         buttons_text = ['Save','Back','Main Menu']
         buttons_position = [(4, 0), (4, 1), (4, 2)]
         buttons_command = [lambda: self.config_load_gui_save(load), self.config_gui, self.start_gui]
-        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command)
+        key_bindings = ['s','b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def config_load_gui_load(self,load):
         ex_file = open_xlsx_file()
@@ -959,9 +1014,4 @@ if __name__ == '__main__':
 
     gui = GUI(root)
     gui.start_gui()
-
-
-    # frm = ttk.Frame(root)
-    # frm.grid(row=0, column=0, sticky="NS")
-
     root.mainloop()
