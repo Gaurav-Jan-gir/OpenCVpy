@@ -84,7 +84,6 @@ class mButtons:
         self.bdrW = '4'
         self.padx = 10
         self.pady = 10
-        
 
     def create_button(self,button_name,button_text,button_position, button_command=None,padding=[0,0]):
         self.buttons[button_name] = Button(self.frame, text=button_text, fg = self.fg, bg = self.bg, font = self.font, borderwidth=self.bdrW, command=button_command, padx=padding[0], pady=padding[1])
@@ -288,18 +287,27 @@ class GUI:
             
 
     def skip_face(self):
-        if len(self.encodings) != 0:
+        if len(self.encodings) > 0:
             self.encodings.pop()
-            if len(self.faces) != 0:
+            if len(self.faces) > 0:
                 self.put_rectangle()
         
     def cam_reg_gui_recapture(self):
         self.clear_camera_frame()
         self.faces.clear()
         self.locations.clear()
+        self.encodings.clear()
         self.control_flag = True
-        cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
-        self.widgets.camera_frames.append(cframe)
+        try:
+            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4)
+            self.widgets.camera_frames.append(cframe)
+        except Exception as e:
+            self.widgets.texts.append(Text(self.frame, width=40, height=17))
+            self.widgets.texts[-1].insert(END,f"\n\n\n\n\n\n\n\nError Acessing Camera : {e}\n\n\n\n\n\n\n\n")
+            self.widgets.texts[-1].configure(font='consolas 12')
+            self.widgets.texts[-1].configure(state=DISABLED)
+            self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
+            self.control_flag = False
 
     def reg_gui_register(self, imag_reg = False):
         if self.widgets.entries[0].get() == "" or self.widgets.entries[1].get() == "":
@@ -470,10 +478,18 @@ class GUI:
         self.clear_camera_frame()
         self.control_flag = True
         self.st = Manager().list()  # Use a Manager list for inter-process communication
-        cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4, st=[self.st], path_save=os.path.join(self.path,'captured_images'))
-        self.widgets.camera_frames.append(cframe)
+        try:
+            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4, st=[self.st], path_save=os.path.join(self.path,'captured_images'))
+            self.widgets.camera_frames.append(cframe)
+        except Exception as e:
+            self.widgets.texts.append(Text(self.frame, width=40, height=17))
+            self.widgets.texts[-1].insert(END,f"\n\n\n\n\n\n\n\nError Acessing Camera : {e}\n\n\n\n\n\n\n\n")
+            self.widgets.texts[-1].configure(font='consolas 12')
+            self.widgets.texts[-1].configure(state=DISABLED)
+            self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
+            self.control_flag = False
+            return
         self.qu = Queue()
-
         self.rec_process = Process(target= self.real_time_rec, args=(self.st,self.qu,self.data,self.confidence_match))
         self.rec_process.daemon = True
         self.rec_process.start()
