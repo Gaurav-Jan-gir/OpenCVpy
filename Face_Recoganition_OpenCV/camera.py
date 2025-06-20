@@ -59,9 +59,18 @@ class Camera:
             message("Error: Could not read image.")
             return None
         # Convert the image to RGB
-        image_rgb = cv.cvtColor(image_bgr, cv.COLOR_BGR2RGB)
+        try:
+            image_rgb = cv.cvtColor(image_bgr, cv.COLOR_BGR2RGB)
+        except cv.error as e:
+            message(f"Error: Could not convert image to RGB. {e}")
+            return None
         # Detect faces in the image
-        face_locs = face_locations(image_rgb)
+        try:
+            face_locs = face_locations(image_rgb)
+        except Exception as e:
+            message(f"Error: Could not detect faces in the image. {e}")
+            return None
+        
         margin = 10
         if not face_locs:
             message("Error: No faces detected in the image.")
