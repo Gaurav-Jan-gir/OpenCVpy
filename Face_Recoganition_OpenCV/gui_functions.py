@@ -13,10 +13,10 @@ def get_safe_data_path():
     os.makedirs(data_path, exist_ok=True)
     return data_path
 
-def camera_frame(frame, cap ,control_flag, row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1, st = [None], path_save=None):
+def camera_frame(frame, cap ,control_flag, row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1, st = [None], path_save=None , camera_frame_size=(640, 480)):
     frame.grid(row=row, column=column, padx=padx, pady=pady, rowspan=rowspan, columnspan=columnspan)
     latest_frame = [None]  # Use list for mutability
-    ce.show_camera_embed(frame, 60, cap, control_flag, latest_frame, st, path_save)
+    ce.show_camera_embed(frame, 60, cap, control_flag, latest_frame, st, path_save,camera_frame_size)
     return frame, latest_frame
 
 def cam_reg_gui_capture(parent_frame, image , row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1):
@@ -54,15 +54,12 @@ def check_registration(name, id):
         return True
     return False
 
-
-
 def save_image_data(encoding, name=None, id=None,existing_data=None,showConfidence=False, threshold_confidence=0.4):
     if existing_data is None:
         existing_data = []
     save_data = saveData(None, load_data=existing_data,showConfidence=showConfidence, threshold_confidence=threshold_confidence)
     save_data.save_img(encoding, name, id)
     return save_data.new_data,save_data.new_labels
-
 
 def destroy_camera(cap):
     ce.destroy_camera(cap)

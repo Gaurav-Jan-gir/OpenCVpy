@@ -3,8 +3,10 @@ import tkinter as tk
 from PIL import Image, ImageTk
 import os
 import datetime
+import time
+import platform
 
-def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame, st = [None] ,path_save = None):
+def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame, st = [None] ,path_save = None,camera_frame_size=(640, 480)):
     if(fps < 6):
         fps = 6
     cam_label = tk.Label(parent_frame)
@@ -12,15 +14,15 @@ def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame, st = [None
 
     if cap[0] is None:
         cap[0] = cv.VideoCapture(0)
-        cap[0].set(cv.CAP_PROP_FRAME_WIDTH, 640)
-        cap[0].set(cv.CAP_PROP_FRAME_HEIGHT, 480)
+        cap[0].set(cv.CAP_PROP_FRAME_WIDTH, camera_frame_size[0])
+        cap[0].set(cv.CAP_PROP_FRAME_HEIGHT, camera_frame_size[1])
 
     def update_frame():
         if cap[0] is None:
             return
         ret, frame = cap[0].read()
         if ret:
-            frame = cv.resize(frame, (640, 480))
+            frame = cv.resize(frame, camera_frame_size)
             latest_frame[0] = frame
             if path_save is not None:
                 if not os.path.exists(path_save):
@@ -30,6 +32,16 @@ def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame, st = [None
                 if st[0] is not None:
                     st[0].append(img_path)
                 cv.imwrite(img_path, frame)
+                if platform.system() != "Windows":
+                    for _ in range(3):
+                        try:
+                            test_img = cv.imread(img_path)
+                            if test_img is None:
+                                raise ValueError("Image not read correctly")
+                            break
+                        except Exception as e:
+                            time.sleep(0.01)
+
             frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
             img = Image.fromarray(frame_rgb)
             img_tk = ImageTk.PhotoImage(img)
@@ -57,7 +69,7 @@ def show_image_embed(parent_frame, img):
     else:
         img_label.config(text="No image available")
 
-def cont_camera_capture(parent_frame, fps, img_dir):
+def cont_camera_capture(parent_frame, fps, img_dir,camera_frame_size=(640, 480)):
     if fps < 6:
         fps = 6
     cam_label = tk.Label(parent_frame)
@@ -67,11 +79,13 @@ def cont_camera_capture(parent_frame, fps, img_dir):
     n = 6
 
     cap = cv.VideoCapture(0)
+    cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv.CAP_PROP_FRAME_HEIGHT, 480)
 
     def update_frame():
         ret, frame = cap.read()
         if ret:
-            frame = cv.resize(frame, (640, 480))
+            frame = cv.resize(frame, camera_frame_size)
             latest_frame[0] = frame
             count[0] += 1
             frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
