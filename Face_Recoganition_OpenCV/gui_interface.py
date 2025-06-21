@@ -77,8 +77,14 @@ class keyBind:
         if not key:
             return
         self.bindings[key.lower()] = button
-        self.root.bind(f'<Key-{key.lower()}>', lambda event: button.invoke())
-        self.root.bind(f'<Key-{key.upper()}>', lambda event: button.invoke())
+        self.root.bind(f'<Key-{key.lower()}>', lambda event: self.conditional_invoke(event,button))
+        self.root.bind(f'<Key-{key.upper()}>', lambda event: self.conditional_invoke(event,button))
+
+    def conditional_invoke(self, event, button):
+        if isinstance(event.widget, (Entry, Text)):
+            # If the event is from an Entry or Text widget, do not invoke the button
+            return
+        button.invoke()  # Invoke the button's command
 
     def unbind_key(self, key):
         if not key:
@@ -556,7 +562,7 @@ class GUI:
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def sel_img(self):
-        image,frame = open_img_file(self.frame, width=350, height=350, row=1, column=0, rowspan=4, columnspan=4)
+        image,frame = open_img_file(self.frame, width=self.fs.get_camera_frame_size()[0], height=self.fs.get_camera_frame_size()[1], row=1, column=0, rowspan=4, columnspan=4)
         if image is not None and frame is not None:
             if len(self.widgets.texts) > 0:
                 self.widgets.texts[-1].grid_remove()
