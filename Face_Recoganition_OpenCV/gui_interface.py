@@ -1,5 +1,6 @@
 from tkinter import *
 from tkinter import ttk
+from tkinter.ttk import Combobox
 from gui_functions import *
 from LoadData import loadData
 from tkinter import filedialog
@@ -165,10 +166,11 @@ class Widgets:
         self.list_boxes = []
         self.frames = []
         self.camera_frames = []
+        self.combo_boxes = []
         self.buttons = mButtons(self.frame,fs)
 
     def clear_widgets(self,cap):
-        for widget in self.labels+self.entries+self.check_boxes+self.scrollbars+self.scales+self.messages+self.texts+self.list_boxes+ self.frames + self.camera_frames:
+        for widget in self.labels+self.entries+self.check_boxes+self.scrollbars+self.scales+self.messages+self.texts+self.list_boxes+ self.frames + self.camera_frames+self.combo_boxes:
             widget.grid_remove()
         self.labels.clear()
         self.entries.clear()
@@ -180,6 +182,7 @@ class Widgets:
         self.messages.clear()
         self.list_boxes.clear()
         self.frames.clear()
+        self.combo_boxes.clear()
         destroy_camera(cap)
         self.camera_frames.clear()
 
@@ -1027,11 +1030,84 @@ class GUI:
         self.clear_frame()
         self.widgets.labels.append(Label(self.frame, text="Settings", font=self.fs.get_main_label_font()))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        buttons_text = ['Confidence','Load Data','Time Gap','Back']
-        buttons_position = [(1, 0), (2, 0), (3, 0),(4,0)]
-        buttons_command = [self.config_conf_gui, self.config_load_gui,self.time_gap_config ,self.start_gui]
-        key_bindings = ['c','l','t','b']
+        buttons_text = ['Confidence','Load Data','Time Gap','Camera Settings','Back']
+        buttons_position = [(1, 0), (2, 0), (3, 0),(4,0),(5,0)]
+        buttons_command = [self.config_conf_gui, self.config_load_gui,self.time_gap_config ,self.camera_config_gui ,self.start_gui]
+        key_bindings = ['c','l','t','m','b']
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
+
+    def update_camera_resolution_list(self, cam_resolution_list):
+        try:
+            cam_index = self.widgets.combo_boxes[0].get()
+            aspect_ratio = self.widgets.combo_boxes[1].get()
+        except (ValueError, IndexError):
+            self.clear_status_messages(row=4, column=0)
+            message = "Please select a valid camera and aspect ratio."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font=self.fs.get_text_font()))
+            self.widgets.messages[-1].grid(column=0, row=4, columnspan=2)
+            return
+        cam_resolution_list.clear()
+        cam_resolution_list.extend(get_camera_resolution_list(cam_index, aspect_ratio))
+        
+
+    def camera_config_gui(self):
+        root.title("Camera Settings")
+        self.active_gui = 'camera_config_gui'
+        self.clear_frame()
+        cam_resolution_list = []
+        self.widgets.labels.append(Label(self.frame, text="Camera Settings", font=self.fs.get_main_label_font()))
+        self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
+        self.widgets.combo_boxes.append(Combobox(self.frame, values=get_available_cameras(), width=30))
+        self.widgets.combo_boxes[-1].set(self.config.get('camera_index', 'Camera 1'))
+        self.widgets.combo_boxes[-1].bind("<<ComboboxSelected>>", lambda e: self.update_camera_resolution_list(cam_resolution_list))
+        self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
+        self.widgets.combo_boxes[-1].grid(column=1, row=1, columnspan=2)
+        self.widgets.labels.append(Label(self.frame, text="Select Camera:", font=self.fs.get_text_font()))
+        self.widgets.labels[-1].grid(column=0, row=1, sticky='w')
+
+        self.widgets.labels.append(Label(self.frame, text="Aspect Ratio:", font=self.fs.get_text_font()))
+        self.widgets.labels[-1].grid(column=0, row=2, sticky='w')
+        self.widgets.combo_boxes.append(Combobox(self.frame, values=get_aspect_ratio_list(), width=30))
+        self.widgets.combo_boxes[-1].grid(column=1, row=2, columnspan=2)
+        self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
+        self.widgets.combo_boxes[-1].set(self.config.get('aspect_ratio', '16:9'))
+        self.widgets.combo_boxes[-1].bind("<<ComboboxSelected>>", lambda e: self.update_camera_resolution_list(cam_resolution_list))
+
+        self.update_camera_resolution_list(cam_resolution_list)
+        self.widgets.labels.append(Label(self.frame, text="Camera Resolution:", font=self.fs.get_text_font()))
+        self.widgets.labels[-1].grid(column=0, row=3, sticky='w')
+        self.widgets.combo_boxes.append(Combobox(self.frame, values=cam_resolution_list, width=30))
+        self.widgets.combo_boxes[-1].set(self.config.get('resolution', '1280x720'))
+        self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
+        self.widgets.combo_boxes[-1].grid(column = 1, row = 3, columnspan = 2)
+
+        buttons_text = ['Save', 'Back', 'Main Menu']
+        buttons_position = [(4, 0), (4, 1), (4, 2)]
+        buttons_command = [self.camera_config_save, self.config_gui, self.start_gui]
+        key_bindings = ['s','b','m']
+        self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
+
+    def camera_config_save(self):
+        camera_index = self.widgets.combo_boxes[0].current()
+        aspect_ratio = self.widgets.combo_boxes[1].get()
+        resolution = self.widgets.combo_boxes[2].get()
+        
+        if camera_index == -1 or aspect_ratio == "" or resolution == "":
+            self.clear_status_messages(row=5, column=0)
+            message = "Please select a valid camera, aspect ratio, and resolution."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font=self.fs.get_text_font()))
+            self.widgets.messages[-1].grid(column=0, row=5, columnspan=2)
+            return
+        
+        self.config['camera_index'] = camera_index
+        self.config['aspect_ratio'] = aspect_ratio
+        self.config['resolution'] = resolution
+        self.save_config(self.config)
+        
+        self.clear_status_messages(row=5, column=0)
+        message = "Camera settings saved successfully."
+        self.widgets.messages.append(Message(self.frame, text=message, width=200, font=self.fs.get_text_font()))
+        self.widgets.messages[-1].grid(column=0, row=5, columnspan=2)
 
     def time_gap_config(self):
         root.title("Time Gap Configuration")

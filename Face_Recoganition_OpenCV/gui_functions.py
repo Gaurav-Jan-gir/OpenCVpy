@@ -150,7 +150,80 @@ def delete_user_entries(ex, c_row, entries,list_box):
         ex.write_excel(c_row, col, None)
     ex.increment_entry_count(c_row, -shift)
 
+def get_available_cameras(max_cameras=10):
+    cam_list = Camera.get_available_cameras(max_cameras)
+    cam_list = [f'Camera {cam+1}' for cam in cam_list]
+    if not cam_list:
+        cam_list = ["No cameras found"]
+    return cam_list
+    
+def get_camera_index_from_name(name):
+    if name == "No cameras found":
+        return None
+    try:
+        return int(name.split(' ')[-1]) - 1
+    except ValueError:
+        return None
+    
+def get_camera_resolution_list(camera_index="Camera 1", aspect_ratio="16:9"):
+    """
+    Returns a list of supported resolutions for a given camera and aspect ratio.
+    """
+    if not camera_index or "No cameras" in camera_index:
+        return ["Select a camera"]
+    if not aspect_ratio:
+        return ["Select an aspect ratio"]
 
-    
-    
+    try:
+        # Assumes camera_index is "Camera X"
+        cam_index = int(camera_index.split()[-1]) - 1
+    except (ValueError, IndexError):
+        return ["Invalid camera selected"]
+
+    # Note: Assuming the method is get_max_resolution as discussed previously
+    max_resolution = Camera.get_camera_resolution(cam_index)
+    if max_resolution is None:
+        return ["Camera resolution not available"]
+    if isinstance(max_resolution, tuple):
+        max_w, max_h = max_resolution
+
+    if not max_w or not max_h:
+        return ["Resolution not available"]
+
+    # A dictionary of all standard resolutions by aspect ratio
+    all_resolutions = {
+        "16:9": ["320x180", "640x360", "1280x720", "1920x1080", "2560x1440", "3840x2160"],
+        "4:3":  ["320x240", "640x480", "800x600", "960x720", "1024x768", "1280x960", "1600x1200"],
+        "1:1":  ["320x320", "480x480", "640x640", "720x720", "1080x1080"],
+        "21:9": ["1280x540", "1920x810", "2560x1080", "3440x1440"],
+        "3:2":  ["360x240", "720x480", "1080x720", "1440x960", "2160x1440"],
+        "5:4":  ["640x512", "800x640", "1280x1024"]
+    }
+
+    supported_resolutions = []
+    # Get the list of standard resolutions for the selected aspect ratio
+    resolutions_to_check = all_resolutions.get(aspect_ratio, [])
+
+    for res_str in resolutions_to_check:
+        try:
+            w, h = map(int, res_str.split('x'))
+            # Check if the standard resolution is supported by the camera's max resolution
+            if w <= max_w and h <= max_h:
+                supported_resolutions.append(res_str)
+        except ValueError:
+            continue  # Skip malformed strings
+
+    if not supported_resolutions:
+        return ["No supported resolutions found"]
+
+    return supported_resolutions
+
+def get_aspect_ratio_list(camera_index=0):
+    aspect_list = [
+        "16:9", "4:3", "1:1", "21:9", "3:2", "5:4"
+    ]
+    return aspect_list
+
+
+
 
