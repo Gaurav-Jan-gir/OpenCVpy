@@ -3,6 +3,7 @@ from face_recognition import face_locations, face_encodings
 from interFace_msg import message
 import os
 import sys
+import numpy as np
 
 def get_safe_data_path():
     base_dir = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__))
@@ -65,6 +66,7 @@ class Camera:
             message(f"Error: Could not convert image to RGB. {e}")
             return None
         # Detect faces in the image
+        image_rgb = np.ascontiguousarray(image_rgb,dtype=np.uint8)  # Ensure the image is contiguous
         try:
             face_locs = face_locations(image_rgb)
         except Exception as e:
@@ -158,6 +160,7 @@ class Camera:
             return None
         if convert_to_bgr:
             image = cv.cvtColor(image, cv.COLOR_RGB2BGR)
+        image = np.ascontiguousarray(image, dtype=np.uint8)  # Ensure the image is contiguous
         encodings = face_encodings(image, face_locations)
         if not encodings:
             message("No face encodings found in the image.")
@@ -183,3 +186,32 @@ class Camera:
             message("Error: No image provided for conversion.")
             return None
         return cv.cvtColor(image, cv.COLOR_BGR2RGB) if len(image.shape) == 3 else image
+    
+    @staticmethod
+    def get_available_cameras(max_cameras=10):
+        available_cams = []
+        for i in range(max_cameras):
+            try:
+                cam = cv.VideoCapture(i)
+            except cv.error as e:
+                pass
+            if cam.isOpened():
+                available_cams.append(i)
+                cam.release()
+        if not available_cams:
+            message("No cameras found.")
+        return available_cams
+    
+    @staticmethod
+    def get_camera_resolution(camera_index=0):
+        cam = cv.VideoCapture(camera_index)
+        if not cam.isOpened():
+            message(f"Could not open camera {camera_index}.")
+            return None
+        cam.set(cv.CAP_PROP_FRAME_WIDTH, 3840)  # Set default width
+        cam.set(cv.CAP_PROP_FRAME_HEIGHT, 2160)  # Set default height
+        width = int(cam.get(cv.CAP_PROP_FRAME_WIDTH))
+        height = int(cam.get(cv.CAP_PROP_FRAME_HEIGHT))
+        cam.release()
+        return (width, height)
+    

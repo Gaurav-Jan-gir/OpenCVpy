@@ -1,8 +1,9 @@
 from face_recognition import face_encodings, face_distance
 from interFace_msg import message
-
+from numpy import ascontiguousarray as aca , uint8
 
 def match(image,match_data):
+    image = aca(image, dtype=uint8)
     encoding = face_encodings(image)
     if not encoding:
         message("No face encodings found in the image.")
