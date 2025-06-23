@@ -194,10 +194,12 @@ class Camera:
             try:
                 cam = cv.VideoCapture(i)
             except cv.error as e:
-                pass
+                break
             if cam.isOpened():
                 available_cams.append(i)
                 cam.release()
+            elif len(available_cams) > 0:
+                break
         if not available_cams:
             message("No cameras found.")
         return available_cams
@@ -208,10 +210,29 @@ class Camera:
         if not cam.isOpened():
             message(f"Could not open camera {camera_index}.")
             return None
+        cam.set(cv.CAP_PROP_FOURCC,cv.VideoWriter_fourcc(*'MJPG'))  # Set codec to MJPG for better compatibility
+        cam.set(cv.CAP_PROP_FPS, 30)  # Set default FPS
         cam.set(cv.CAP_PROP_FRAME_WIDTH, 3840)  # Set default width
-        cam.set(cv.CAP_PROP_FRAME_HEIGHT, 2160)  # Set default height
+        cam.set(cv.CAP_PROP_FRAME_HEIGHT, 2160)
         width = int(cam.get(cv.CAP_PROP_FRAME_WIDTH))
         height = int(cam.get(cv.CAP_PROP_FRAME_HEIGHT))
         cam.release()
         return (width, height)
+    
+    @staticmethod
+    def get_fps(camera_index=0,resolution=(1280, 720)):
+        cam = cv.VideoCapture(camera_index)
+        if not cam.isOpened():
+            message(f"Could not open camera {camera_index}.")
+            return None
+        cam.set(cv.CAP_PROP_FOURCC, cv.VideoWriter_fourcc(*'MJPG'))
+        cam.set(cv.CAP_PROP_FRAME_WIDTH, int(resolution[0]))
+        cam.set(cv.CAP_PROP_FRAME_HEIGHT, int(resolution[1]))
+        fps = cam.get(cv.CAP_PROP_FPS)
+        if fps <= 0:
+            message(f"Could not retrieve FPS for camera {camera_index}.")
+            cam.release()
+            return None
+        cam.release()
+        return fps
     

@@ -224,6 +224,16 @@ def get_aspect_ratio_list(camera_index=0):
     ]
     return aspect_list
 
+def get_fps_list(camera_index=0, resolution="1280x720"):
+    fps = Camera.get_fps(camera_index, resolution)
+    if fps is None:
+        return ["FPS not available for this camera and resolution"]
+    
+    fps_list = [15,24,25,30,60,90,120,144,240]
+    while(fps_list[-1] > fps):
+        fps_list.pop()
+    return fps_list
+
 
 
 
