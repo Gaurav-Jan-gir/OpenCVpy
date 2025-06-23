@@ -332,6 +332,14 @@ class GUI:
             self.real_time_rec_gui()
         elif self.active_gui == 'keypress_rec_gui':
             self.keypress_rec_gui()
+        elif self.active_gui == 'op_data':
+            self.op_data()
+        elif self.active_gui == 'config_gui':
+            self.config_gui()
+        elif self.active_gui == 'exit_gui':
+            self.exit_gui()
+        elif self.active_gui == 'camera_config_gui':
+            self.camera_config_gui()
         self.restore_frame_data()
 
     def back_up_current_frame_data(self):
@@ -377,6 +385,9 @@ class GUI:
         for i, scrollbar in enumerate(self.widgets.scrollbars):
             if i < len(self.retrieve_data['scrollbars']):
                 scrollbar.set(*self.retrieve_data['scrollbars'][i])
+        for i, combobox in enumerate(self.widgets.combo_boxes):
+            if i < len(self.retrieve_data['combo_boxes']):
+                combobox.set(self.retrieve_data['combo_boxes'][i])
 
     def start_gui(self):
         root.title("Face Recognition")
@@ -1041,14 +1052,35 @@ class GUI:
             cam_index = self.widgets.combo_boxes[0].get()
             aspect_ratio = self.widgets.combo_boxes[1].get()
         except (ValueError, IndexError):
-            self.clear_status_messages(row=4, column=0)
+            self.clear_status_messages(row=6, column=0)
             message = "Please select a valid camera and aspect ratio."
             self.widgets.messages.append(Message(self.frame, text=message, width=200, font=self.fs.get_text_font()))
-            self.widgets.messages[-1].grid(column=0, row=4, columnspan=2)
+            self.widgets.messages[-1].grid(column=0, row=6, columnspan=2)
             return
         cam_resolution_list.clear()
         cam_resolution_list.extend(get_camera_resolution_list(cam_index, aspect_ratio))
+
+        if len(self.widgets.combo_boxes) >= 3:
+            self.widgets.combo_boxes[2].configure(values=cam_resolution_list)
+            if cam_resolution_list:
+                self.widgets.combo_boxes[2].set(cam_resolution_list[0])
         
+    def update_fps_list(self):
+        try:
+            cam_index = int(self.widgets.combo_boxes[0].get().split()[-1])-1  # Get the camera index from the selected camera name
+            aspect_ratio = self.widgets.combo_boxes[1].get()
+            resolution = self.widgets.combo_boxes[2].get()
+        except (ValueError, IndexError):
+            self.clear_status_messages(row=6, column=0)
+            message = "Please select a valid camera, aspect ratio, and resolution."
+            self.widgets.messages.append(Message(self.frame, text=message, width=200, font=self.fs.get_text_font()))
+            self.widgets.messages[-1].grid(column=0, row=6, columnspan=2)
+            return
+        fps_list = get_fps_list(cam_index,resolution)
+        if len(self.widgets.combo_boxes) >= 4:
+            self.widgets.combo_boxes[3].configure(values=fps_list)
+            if fps_list:
+                self.widgets.combo_boxes[3].set(fps_list[0])
 
     def camera_config_gui(self):
         root.title("Camera Settings")
@@ -1059,7 +1091,6 @@ class GUI:
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.widgets.combo_boxes.append(Combobox(self.frame, values=get_available_cameras(), width=30))
         self.widgets.combo_boxes[-1].set(self.config.get('camera_index', 'Camera 1'))
-        self.widgets.combo_boxes[-1].bind("<<ComboboxSelected>>", lambda e: self.update_camera_resolution_list(cam_resolution_list))
         self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
         self.widgets.combo_boxes[-1].grid(column=1, row=1, columnspan=2)
         self.widgets.labels.append(Label(self.frame, text="Select Camera:", font=self.fs.get_text_font()))
@@ -1071,7 +1102,6 @@ class GUI:
         self.widgets.combo_boxes[-1].grid(column=1, row=2, columnspan=2)
         self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
         self.widgets.combo_boxes[-1].set(self.config.get('aspect_ratio', '16:9'))
-        self.widgets.combo_boxes[-1].bind("<<ComboboxSelected>>", lambda e: self.update_camera_resolution_list(cam_resolution_list))
 
         self.update_camera_resolution_list(cam_resolution_list)
         self.widgets.labels.append(Label(self.frame, text="Camera Resolution:", font=self.fs.get_text_font()))
@@ -1080,17 +1110,28 @@ class GUI:
         self.widgets.combo_boxes[-1].set(self.config.get('resolution', '1280x720'))
         self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
         self.widgets.combo_boxes[-1].grid(column = 1, row = 3, columnspan = 2)
+        self.widgets.combo_boxes[1].bind("<<ComboboxSelected>>", lambda e: self.update_camera_resolution_list(cam_resolution_list))
+        self.widgets.combo_boxes[0].bind("<<ComboboxSelected>>", lambda e: self.update_camera_resolution_list(cam_resolution_list))
+
+        self.widgets.labels.append(Label(self.frame, text="Fraame Per Second (FPS):", font=self.fs.get_text_font()))
+        self.widgets.labels[-1].grid(column=0, row=4, sticky='w')
+        self.widgets.combo_boxes.append(Combobox(self.frame, values=get_fps_list(), width=30))
+        self.widgets.combo_boxes[-1].set(self.config.get('fps', '30'))
+        self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
+        self.widgets.combo_boxes[-1].grid(column=1, row=4, columnspan=2)
+        self.widgets.combo_boxes[2].bind("<<ComboboxSelected>>", lambda e: self.update_fps_list())
 
         buttons_text = ['Save', 'Back', 'Main Menu']
-        buttons_position = [(4, 0), (4, 1), (4, 2)]
+        buttons_position = [(5, 0), (5, 1), (5, 2)]
         buttons_command = [self.camera_config_save, self.config_gui, self.start_gui]
         key_bindings = ['s','b','m']
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
     def camera_config_save(self):
-        camera_index = self.widgets.combo_boxes[0].current()
+        camera_index = self.widgets.combo_boxes[0].get()
         aspect_ratio = self.widgets.combo_boxes[1].get()
         resolution = self.widgets.combo_boxes[2].get()
+        fps = self.widgets.combo_boxes[3].get()
         
         if camera_index == -1 or aspect_ratio == "" or resolution == "":
             self.clear_status_messages(row=5, column=0)
@@ -1102,12 +1143,13 @@ class GUI:
         self.config['camera_index'] = camera_index
         self.config['aspect_ratio'] = aspect_ratio
         self.config['resolution'] = resolution
+        self.config['fps'] = fps
         self.save_config(self.config)
         
-        self.clear_status_messages(row=5, column=0)
+        self.clear_status_messages(row=6, column=0)
         message = "Camera settings saved successfully."
         self.widgets.messages.append(Message(self.frame, text=message, width=200, font=self.fs.get_text_font()))
-        self.widgets.messages[-1].grid(column=0, row=5, columnspan=2)
+        self.widgets.messages[-1].grid(column=0, row=6, columnspan=2)
 
     def time_gap_config(self):
         root.title("Time Gap Configuration")
