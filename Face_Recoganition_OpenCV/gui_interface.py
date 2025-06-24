@@ -69,6 +69,8 @@ def open_xlsx_file():
     except Exception as e:
         print(f"Error opening Excel file: {e}")
         return None
+
+
 class keyBind:
     def __init__(self, root):
         self.root = root
@@ -208,6 +210,10 @@ class GUI:
         self.confidence_match = self.config["confidence_match"]
         self.save_confidence = self.config["confidence_save"]
         self.showConfidence = self.config["show_confidence"]
+        self.camera_index = self.config["camera_index"]  # Default to 0 if not set
+        self.camera_resolution = self.config["camera_resolution"]  # Default to (640, 480) if not set
+        self.camera_fps = self.config["camera_fps"]  # Default to 30 if not set
+        self.aspect_ratio = self.config["aspect_ratio"]  # Default to "16:9" if not set
         self.tg = self.config["time_gap"]
         self.ex = Excel_handle(os.path.join(self.path,'data.xlsx'))
         self.fps = 30 
@@ -264,7 +270,11 @@ class GUI:
             "confidence_match": 0.4,
             "confidence_save": 0.4,
             "show_confidence": False,
-            "time_gap": 3600
+            "time_gap": 3600,
+            "camera_index": "Camera 1",  # Default camera index
+            "camera_resolution": "640x480",
+            "camera_fps": "25",
+            "aspect_ratio": "16:9"
         }
         if config_path is None:
             config_path = self.config_path
@@ -420,8 +430,9 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Camera Capture", font=self.fs.get_main_label_font()))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.control_flag = True
+        print(f"Camera Index = {self.camera_index} Resolution = {self.camera_resolution} fps = {self.camera_fps}")
         try:
-            cframe, self.latest_image = camera_frame(Frame(self.frame), self.cap, self.control_flag, row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size())
+            cframe, self.latest_image = camera_frame(Frame(self.frame), self.cap, self.control_flag, row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.camera_index, camera_resolution=self.camera_resolution, fps=self.camera_fps)
             self.widgets.camera_frames.append(cframe)
         except Exception as e:
             self.widgets.texts.append(Text(self.frame, width=40, height=17))
@@ -487,7 +498,7 @@ class GUI:
         self.encodings.clear()
         self.control_flag = True
         try:
-            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size())
+            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.camera_index, camera_resolution=self.camera_resolution, fps=self.camera_fps)
             self.widgets.camera_frames.append(cframe)
         except Exception as e:
             self.widgets.texts.append(Text(self.frame, width=40, height=17))
@@ -682,7 +693,7 @@ class GUI:
         self.control_flag = True
         self.st = Manager().list()  # Use a Manager list for inter-process communication
         try:
-            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4, st=[self.st], path_save=os.path.join(self.path,'captured_images'),camera_frame_size= self.fs.get_camera_frame_size())
+            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4, st=[self.st], path_save=os.path.join(self.path,'captured_images'),camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.camera_index, camera_resolution=self.camera_resolution, fps=self.camera_fps)
             self.widgets.camera_frames.append(cframe)
         except Exception as e:
             self.widgets.texts.append(Text(self.frame, width=40, height=17))
@@ -743,7 +754,12 @@ class GUI:
                             qu.put(matched)
                         except Exception:
                             return # Adjust sleep time as needed
-                    
+            if(len(st) > 10):
+                s1 = st[0:len(st)//2]
+                del st[0:len(st)//2]
+                clear_images(s1)
+
+
     def keypress_rec_gui(self):
         root.title("Keypress Recognition")
         self.active_gui = 'keypress_rec_gui'
@@ -752,7 +768,7 @@ class GUI:
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.control_flag = True
         try:
-            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size())
+            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.camera_index, camera_resolution=self.camera_resolution, fps=self.camera_fps)
             self.widgets.camera_frames.append(cframe)
         except Exception as e:
             self.widgets.texts.append(Text(self.frame, width=40, height=17))
@@ -1107,16 +1123,16 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Camera Resolution:", font=self.fs.get_text_font()))
         self.widgets.labels[-1].grid(column=0, row=3, sticky='w')
         self.widgets.combo_boxes.append(Combobox(self.frame, values=cam_resolution_list, width=30))
-        self.widgets.combo_boxes[-1].set(self.config.get('resolution', '1280x720'))
+        self.widgets.combo_boxes[-1].set(self.config.get('camera_resolution', '1280x720'))
         self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
         self.widgets.combo_boxes[-1].grid(column = 1, row = 3, columnspan = 2)
         self.widgets.combo_boxes[1].bind("<<ComboboxSelected>>", lambda e: self.update_camera_resolution_list(cam_resolution_list))
         self.widgets.combo_boxes[0].bind("<<ComboboxSelected>>", lambda e: self.update_camera_resolution_list(cam_resolution_list))
 
-        self.widgets.labels.append(Label(self.frame, text="Fraame Per Second (FPS):", font=self.fs.get_text_font()))
+        self.widgets.labels.append(Label(self.frame, text="Frame Per Second (FPS):", font=self.fs.get_text_font()))
         self.widgets.labels[-1].grid(column=0, row=4, sticky='w')
         self.widgets.combo_boxes.append(Combobox(self.frame, values=get_fps_list(), width=30))
-        self.widgets.combo_boxes[-1].set(self.config.get('fps', '30'))
+        self.widgets.combo_boxes[-1].set(self.config.get('camera_fps', '30'))
         self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
         self.widgets.combo_boxes[-1].grid(column=1, row=4, columnspan=2)
         self.widgets.combo_boxes[2].bind("<<ComboboxSelected>>", lambda e: self.update_fps_list())
@@ -1133,17 +1149,22 @@ class GUI:
         resolution = self.widgets.combo_boxes[2].get()
         fps = self.widgets.combo_boxes[3].get()
         
-        if camera_index == -1 or aspect_ratio == "" or resolution == "":
+        if camera_index == "" or aspect_ratio == "" or resolution == "":
             self.clear_status_messages(row=5, column=0)
             message = "Please select a valid camera, aspect ratio, and resolution."
             self.widgets.messages.append(Message(self.frame, text=message, width=200, font=self.fs.get_text_font()))
             self.widgets.messages[-1].grid(column=0, row=5, columnspan=2)
             return
         
+        self.camera_index = camera_index
+        self.aspect_ratio = aspect_ratio
+        self.camera_resolution = resolution
+        self.camera_fps = fps
+        
         self.config['camera_index'] = camera_index
         self.config['aspect_ratio'] = aspect_ratio
-        self.config['resolution'] = resolution
-        self.config['fps'] = fps
+        self.config['camera_resolution'] = resolution
+        self.config['camera_fps'] = fps
         self.save_config(self.config)
         
         self.clear_status_messages(row=6, column=0)
