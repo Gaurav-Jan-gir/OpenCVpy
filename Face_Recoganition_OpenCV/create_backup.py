@@ -53,9 +53,6 @@ def restore_npy(data_dir, backup_dir):
     else:
         print(f"No .npy backup found in {npy_dir}")
 
-
-
-
 def backup_excel(excel_file, backup_dir):
     excel_dir = os.path.join(backup_dir, 'excel')
     os.makedirs(excel_dir, exist_ok=True)

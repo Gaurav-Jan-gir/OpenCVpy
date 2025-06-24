@@ -1,5 +1,4 @@
 import camera_embed as ce
-from Interface_excel import interFace 
 import os
 from tkinter import Frame
 from camera import Camera
@@ -13,16 +12,28 @@ def get_safe_data_path():
     os.makedirs(data_path, exist_ok=True)
     return data_path
 
-def camera_frame(frame, cap ,control_flag, row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1, st = [None], path_save=None , camera_frame_size=(640, 480)):
+def camera_frame(frame, cap ,control_flag, row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1, st = [None], path_save=None , camera_frame_size=(640,480),camera_index="Camera 1",fps = "25",camera_resolution="640x480"):
     frame.grid(row=row, column=column, padx=padx, pady=pady, rowspan=rowspan, columnspan=columnspan)
     latest_frame = [None]  # Use list for mutability
-    ce.show_camera_embed(frame, 60, cap, control_flag, latest_frame, st, path_save,camera_frame_size)
+    cam_index = int(camera_index.split(' ')[-1])-1
+    resolution = (int(camera_resolution.split('x')[0]), int(camera_resolution.split('x')[1]))
+    cam_fps = int(fps)
+    ce.show_camera_embed(frame, cam_fps, cap, control_flag, latest_frame, st, path_save,camera_frame_size, camera_index=cam_index, resolution = resolution)
     return frame, latest_frame
 
 def cam_reg_gui_capture(parent_frame, image , row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1):
     parent_frame.grid(row=row, column=column, padx=padx, pady=pady, rowspan=rowspan, columnspan=columnspan)
     ce.show_image_embed(parent_frame, image)
     return parent_frame
+
+def clear_images(ls):
+    for img_path in ls:
+        try:
+            os.remove(img_path)
+        except FileNotFoundError:
+            pass
+        except Exception as e: 
+            print(f"Error removing {img_path}: {e}")
 
 def get_cropped_faces_locations(image):
     img_path = os.path.join(get_safe_data_path(),'img.jpg')
@@ -175,22 +186,10 @@ def get_camera_resolution_list(camera_index="Camera 1", aspect_ratio="16:9"):
         return ["Select an aspect ratio"]
 
     try:
-        # Assumes camera_index is "Camera X"
         cam_index = int(camera_index.split()[-1]) - 1
     except (ValueError, IndexError):
         return ["Invalid camera selected"]
 
-    # Note: Assuming the method is get_max_resolution as discussed previously
-    max_resolution = Camera.get_camera_resolution(cam_index)
-    if max_resolution is None:
-        return ["Camera resolution not available"]
-    if isinstance(max_resolution, tuple):
-        max_w, max_h = max_resolution
-
-    if not max_w or not max_h:
-        return ["Resolution not available"]
-
-    # A dictionary of all standard resolutions by aspect ratio
     all_resolutions = {
         "16:9": ["320x180", "640x360", "1280x720", "1920x1080", "2560x1440", "3840x2160"],
         "4:3":  ["320x240", "640x480", "800x600", "960x720", "1024x768", "1280x960", "1600x1200"],
@@ -201,17 +200,15 @@ def get_camera_resolution_list(camera_index="Camera 1", aspect_ratio="16:9"):
     }
 
     supported_resolutions = []
-    # Get the list of standard resolutions for the selected aspect ratio
     resolutions_to_check = all_resolutions.get(aspect_ratio, [])
 
     for res_str in resolutions_to_check:
         try:
-            w, h = map(int, res_str.split('x'))
-            # Check if the standard resolution is supported by the camera's max resolution
-            if w <= max_w and h <= max_h:
+            w,h = map(int, res_str.split('x'))
+            if(Camera.is_resolution_supported(cam_index, (w, h))):
                 supported_resolutions.append(res_str)
         except ValueError:
-            continue  # Skip malformed strings
+            continue
 
     if not supported_resolutions:
         return ["No supported resolutions found"]
@@ -225,14 +222,12 @@ def get_aspect_ratio_list(camera_index=0):
     return aspect_list
 
 def get_fps_list(camera_index=0, resolution="1280x720"):
-    fps = Camera.get_fps(camera_index, resolution)
-    if fps is None:
-        return ["FPS not available for this camera and resolution"]
-    
-    fps_list = [15,24,25,30,60,90,120,144,240]
-    while(fps_list[-1] > fps):
-        fps_list.pop()
-    return fps_list
+    fps_list = [5,10,15,24,25,30]
+    res = []
+    for fps in fps_list:
+        if Camera.is_fps_supported(camera_index, resolution, fps):
+            res.append(fps)
+    return res
 
 
 

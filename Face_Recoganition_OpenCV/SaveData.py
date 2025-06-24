@@ -60,7 +60,11 @@ class saveData:
             
     def create_labels(self,res):
         for matcher_result,encoding in res:
-            if matcher_result is not None and matcher_result[3] < self.threshold_confidence:
+            if matcher_result is None:
+                interFace.message("No face encodings found in the image.")
+                self.flag = 0
+                return
+            elif matcher_result[3] is not None and matcher_result[3] < self.threshold_confidence:
                 choice = interFace.interfaceSaveData(matcher_result[0], matcher_result[1], matcher_result[3],showConfidence=self.showConfidence) 
                 if choice == 1:
                     self.name = matcher_result[0]
@@ -71,8 +75,10 @@ class saveData:
                     if choice == 3:
                         self.changeAllMatchData(matcher_result[0], matcher_result[1])
                     self.save_img(encoding)
-                elif choice == 0:
+                else:
                     interFace.message("Aborting saving current data.")
+                    self.flag = 0
+                    return
                 self.flag = choice
             else:
                 # No match found, ask for new name and ID

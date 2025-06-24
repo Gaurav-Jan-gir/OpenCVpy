@@ -95,7 +95,7 @@ class Camera:
         return cropped_faces, cropped_faces_locations
     
     @staticmethod
-    def img_read(path, convert_to_bgr=False):
+    def img_read(path, convert_to_rgb=False):
         if not os.path.exists(path):
             message(f"Error: Image file {path} does not exist.")
             return None
@@ -103,7 +103,7 @@ class Camera:
         if image is None:
             message(f"Error: Could not read image from {path}.")
             return None
-        if convert_to_bgr:
+        if convert_to_rgb:
             image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
         return image
 
@@ -153,15 +153,15 @@ class Camera:
         cv.destroyAllWindows()
 
     @staticmethod
-    def get_face_encodings(image_path,face_locations, convert_to_bgr=False):
+    def get_face_encodings(image_path,face_locations):
         image = cv.imread(image_path)
         if image is None:
             message(f"Error: Could not load image from {image_path}")
             return None
-        if convert_to_bgr:
-            image = cv.cvtColor(image, cv.COLOR_RGB2BGR)
-        image = np.ascontiguousarray(image, dtype=np.uint8)  # Ensure the image is contiguous
-        encodings = face_encodings(image, face_locations)
+        
+        image_rgb = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+        image_rgb = np.ascontiguousarray(image_rgb, dtype=np.uint8)  # Ensure the image is contiguous
+        encodings = face_encodings(image_rgb, face_locations)
         if not encodings:
             message("No face encodings found in the image.")
             return None
@@ -169,8 +169,9 @@ class Camera:
     
     def process_frame_in_memory(self, frame):
         # Process frame directly without saving to disk
-        face_locations_list = face_locations(frame)
-        face_encodings_list = face_encodings(frame, face_locations_list)
+        frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+        face_locations_list = face_locations(frame_rgb)
+        face_encodings_list = face_encodings(frame_rgb, face_locations_list)
         return face_encodings_list, face_locations_list
     
     @staticmethod
@@ -205,22 +206,7 @@ class Camera:
         return available_cams
     
     @staticmethod
-    def get_camera_resolution(camera_index=0):
-        cam = cv.VideoCapture(camera_index)
-        if not cam.isOpened():
-            message(f"Could not open camera {camera_index}.")
-            return None
-        cam.set(cv.CAP_PROP_FOURCC,cv.VideoWriter_fourcc(*'MJPG'))  # Set codec to MJPG for better compatibility
-        cam.set(cv.CAP_PROP_FPS, 30)  # Set default FPS
-        cam.set(cv.CAP_PROP_FRAME_WIDTH, 3840)  # Set default width
-        cam.set(cv.CAP_PROP_FRAME_HEIGHT, 2160)
-        width = int(cam.get(cv.CAP_PROP_FRAME_WIDTH))
-        height = int(cam.get(cv.CAP_PROP_FRAME_HEIGHT))
-        cam.release()
-        return (width, height)
-    
-    @staticmethod
-    def get_fps(camera_index=0,resolution=(1280, 720)):
+    def is_resolution_supported(camera_index=0, resolution=(1280, 720)):
         cam = cv.VideoCapture(camera_index)
         if not cam.isOpened():
             message(f"Could not open camera {camera_index}.")
@@ -228,11 +214,21 @@ class Camera:
         cam.set(cv.CAP_PROP_FOURCC, cv.VideoWriter_fourcc(*'MJPG'))
         cam.set(cv.CAP_PROP_FRAME_WIDTH, int(resolution[0]))
         cam.set(cv.CAP_PROP_FRAME_HEIGHT, int(resolution[1]))
-        fps = cam.get(cv.CAP_PROP_FPS)
-        if fps <= 0:
-            message(f"Could not retrieve FPS for camera {camera_index}.")
-            cam.release()
-            return None
+        width = int(cam.get(cv.CAP_PROP_FRAME_WIDTH))
+        height = int(cam.get(cv.CAP_PROP_FRAME_HEIGHT))
         cam.release()
-        return fps
+        return (width, height) == resolution
     
+    @staticmethod
+    def is_fps_supported(camera_index = 0, resolution = (1280,720), fps = 30):
+        cam = cv.VideoCapture(camera_index)
+        if not cam.isOpened():
+            message(f"Could not open camera {camera_index}.")
+            return None
+        cam.set(cv.CAP_PROP_FOURCC, cv.VideoWriter_fourcc(*'MJPG'))
+        cam.set(cv.CAP_PROP_FRAME_WIDTH, int(resolution[0]))
+        cam.set(cv.CAP_PROP_FRAME_HEIGHT, int(resolution[1]))
+        cam.set(cv.CAP_PROP_FPS, fps)
+        cam_fps = cam.get(cv.CAP_PROP_FPS)
+        cam.release()
+        return cam_fps == fps
