@@ -754,10 +754,10 @@ class GUI:
                             qu.put(matched)
                         except Exception:
                             return # Adjust sleep time as needed
-            if(len(st) > 10):
-                s1 = st[0:len(st)//2]
-                del st[0:len(st)//2]
-                clear_images(s1)
+            # if(len(st) > 80):
+            #     s1 = st[0:len(st)//2]
+            #     del st[0:len(st)//2]
+            #     clear_images(s1)
 
 
     def keypress_rec_gui(self):

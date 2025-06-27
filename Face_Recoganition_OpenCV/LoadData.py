@@ -3,14 +3,19 @@ import numpy as np
 from interFace_msg import message
 
 class loadData:
-    def __init__(self):
+    def __init__(self,path=None):
         self.data = []
         self.labels = []
+        self.path = path
         self.load()
     
     def load(self):
         # Load all the data from the data directory
-        for filename in os.listdir(os.path.join(os.getcwd(), 'data')):
+        if self.path is None:
+            self.path = os.path.join(os.getcwd(), 'data')
+        if not os.path.exists(self.path):
+            os.makedirs(self.path,exist_ok=True)
+        for filename in os.listdir(self.path):
             if filename.endswith('.npy'):
                 path = os.path.join(os.getcwd(), 'data', filename)
                 try:
