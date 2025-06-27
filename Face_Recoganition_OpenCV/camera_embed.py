@@ -29,8 +29,13 @@ def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame, st = [None
             if path_save is not None:
                 if not os.path.exists(path_save):
                     os.makedirs(path_save)
-                file_name = datetime.datetime.now().strftime("img_%Y%m%d_%H%M%S.jpg")
+                i = 0
+                file_name = datetime.datetime.now().strftime(f"img_%Y%m%d_%H%M%S_{i}.jpg")
                 img_path = os.path.join(path_save, file_name)
+                while os.path.exists(img_path):
+                    i += 1
+                    file_name = datetime.datetime.now().strftime(f"img_%Y%m%d_%H%M%S_{i}.jpg")
+                    img_path = os.path.join(path_save, file_name)
                 if st[0] is not None:
                     st[0].append(img_path)
                 cv.imwrite(img_path, frame)

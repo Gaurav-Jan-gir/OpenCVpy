@@ -33,7 +33,7 @@ class Camera:
             ret, frame = self.cam.read()
             if not ret:
                 message("Error: Could not read frame.")
-                break
+                return None
 
             cv.imshow('Camera - Press s to save', frame)
             key = cv.waitKey(1) & 0xFF
@@ -42,23 +42,24 @@ class Camera:
                 if not os.path.exists(self.path):
                     os.makedirs(self.path)
                 cv.imwrite(os.path.join(self.path, 'temp.jpg'), frame)
-                self.isSaved = True
-                break
+                return frame
             elif key == ord('q'):
                 print("Capture cancelled.")
-                self.isSaved = False
-                break
+                return None
 
 
     @staticmethod
     def crop_face(image_path):
-        if not os.path.exists(image_path):
-            message("Error: Image file does not exist.")
-            return None
-        image_bgr = cv.imread(image_path)
-        if image_bgr is None:
-            message("Error: Could not read image.")
-            return None
+        if isinstance(image_path, str):
+            if not os.path.exists(image_path):
+                message("Error: Image file does not exist.")
+                return None
+            image_bgr = cv.imread(image_path)
+            if image_bgr is None:
+                message("Error: Could not read image.")
+                return None
+        else:
+            image_bgr = image_path
         # Convert the image to RGB
         try:
             image_rgb = cv.cvtColor(image_bgr, cv.COLOR_BGR2RGB)
@@ -154,7 +155,10 @@ class Camera:
 
     @staticmethod
     def get_face_encodings(image_path,face_locations):
-        image = cv.imread(image_path)
+        if isinstance(image_path, str):
+            image = cv.imread(image_path)
+        else:
+            image = image_path
         if image is None:
             message(f"Error: Could not load image from {image_path}")
             return None

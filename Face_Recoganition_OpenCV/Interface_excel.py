@@ -19,8 +19,10 @@ class interFace:
     def __init__(self, excel_path, config_path):
         self.path = get_safe_data_path()
         os.makedirs(self.path, exist_ok=True)  # Extra safety
+        if config_path is None:
+            config_path = os.path.join(self.path, 'config.json')
         self.config = self.load_config(config_path)
-        self.load_data = loadData()
+        self.load_data = loadData(self.path)
         self.confidence_match = self.config["confidence_match"]
         self.save_confidence = self.config["confidence_save"]
         self.showConfidence = self.config["show_confidence"]
@@ -52,8 +54,8 @@ class interFace:
                 self.registerViaCamera()
             elif choice == 2:
                 imag = input("Enter the path of the image: ")
-                self.registerViaImage(imag)
-                message("Image registered successfully", input_key=True)
+                if self.registerViaImage(imag):
+                    message("Image registered successfully", input_key=True)
             elif choice == 3:
                 self.recognize()
             elif choice == 4:
@@ -75,22 +77,27 @@ class interFace:
                 return
             else:
                 print("Invalid choice")
-                input("Press any key to continue...")
-                self.clear_screen()
+            input("Press any key to continue...")
+            self.clear_screen()
 
     def registerViaCamera(self):
         cam = Camera()
-        cam.capture()
+        img = cam.capture()
         cam.destroy()
-        if cam.isSaved:
-            self.registerViaImage(os.path.join(self.path, 'temp.jpg'))
+        if img is not None:
+            self.registerViaImage(image_path=img)
         else:
             self.clear_screen()
 
     def registerViaImage(self, image_path):
-        if not os.path.exists(image_path):
-            message("Image file does not exist. Please provide a valid image path.", input_key=True)
+        if isinstance(image_path, str):
+            if not os.path.exists(image_path):
+                message("Image file does not exist. Please provide a valid image path.", input_key=True)
+                return None
+            image_path = Camera.img_read(image_path)
+        if image_path is None:
             return None
+        
         saveStatus = saveData(image_path,self.load_data,self.showConfidence,self.save_confidence)
         res = saveStatus.encode()
         saveStatus.create_labels(res)
@@ -135,6 +142,11 @@ class interFace:
             return
         
     def recoganize_k(self,img_path,tg):
+        if isinstance(img_path, str):
+            if not os.path.exists(img_path):
+                message("Image file does not exist. Please provide a valid image path.", input_key=True)
+                return False
+            img_path = Camera.img_read(img_path)
         cropped_faces, cropped_face_locations = Camera.crop_face(img_path)
         flag = False
         for cropped_face, location in zip(cropped_faces, cropped_face_locations):
@@ -149,10 +161,10 @@ class interFace:
         cam = Camera()  # Create camera ONCE outside the loop
         try:
             while True:
-                cam.capture()
-                if cam.isSaved:
+                img = cam.capture()
+                if img is not None:
                     try:
-                        self.recoganize_k(os.path.join(self.path, 'temp.jpg'), tg)
+                        self.recoganize_k(img, tg)
                     except PermissionError as e:
                         print(f"Permission Error: {e}. Please close the Excel file and try again.")
                         input("Press any key to continue...")
