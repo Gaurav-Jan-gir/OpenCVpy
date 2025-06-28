@@ -22,16 +22,23 @@ def get_safe_data_path():
 class CLI:
     def __init__(self):
         self.path = get_safe_data_path()
+        self.cam_defaults = {}
         self.config = self.load_config()
         self.camera_config = {
             'camera_index': self.config['camera_index'] if 'camera_index' in self.config else 0, 
             'camera_resolution': self.config['camera_resolution'] if 'camera_resolution' in self.config else (640, 480),
             'camera_fps': self.config['camera_fps'] if 'camera_fps' in self.config else 30,
+            'camera_focus': self.config.get('camera_focus', 0),
             'camera_brightness': self.config['camera_brightness'] if 'camera_brightness' in self.config else 0.5,
             'camera_contrast': self.config['camera_contrast'] if 'camera_contrast' in self.config else 0.5,
             'camera_saturation': self.config['camera_saturation'] if 'camera_saturation' in self.config else 0.5,
             'camera_exposure': self.config['camera_exposure'] if 'camera_exposure' in self.config else 0.5,
             'camera_gain': self.config['camera_gain'] if 'camera_gain' in self.config else 0.5,
+            'camera_hue': self.config.get('camera_hue', 0),
+            'camera_sharpness': self.config.get('camera_sharpness', 0),
+            'camera_gamma': self.config.get('camera_gamma', 0),
+            'camera_white_balance': self.config.get('camera_white_balance', 0),
+            'camera_color_temperature': self.config.get('camera_color_temperature', 0),
         }
         self.cam = Camera(self.camera_config)
         self.logs = Logs(self.config['show_log'] if 'show_log' in self.config else True)
@@ -43,16 +50,23 @@ class CLI:
         self.show_confidence = self.config['show_confidence'] if 'show_confidence' in self.config else True
 
     def load_config(self):
+        cam0_defaults = Camera.get_defaults(0)
         default_config = {
             "tolerance": 0.4,
             "camera_index": 0,
             "camera_resolution": (640, 480),
             "camera_fps": 30,
-            "camera_brightness": 0.5,
-            "camera_contrast": 0.5,
-            "camera_saturation": 0.5,
-            "camera_exposure": 0.5,
-            "camera_gain": 0.5,
+            "camera_focus": cam0_defaults.get('camera_focus', 0),
+            "camera_brightness": cam0_defaults['camera_brightness'],
+            "camera_contrast": cam0_defaults['camera_contrast'],
+            "camera_saturation": cam0_defaults['camera_saturation'],
+            "camera_exposure": cam0_defaults['camera_exposure'],
+            "camera_gain": cam0_defaults['camera_gain'],
+            "camera_hue": cam0_defaults.get('camera_hue', 0),
+            "camera_sharpness": cam0_defaults.get('camera_sharpness', 0),
+            "camera_gamma": cam0_defaults.get('camera_gamma', 0),
+            "camera_white_balance": cam0_defaults.get('camera_white_balance', 0),
+            "camera_color_temperature": cam0_defaults.get('camera_color_temperature', 0),
             "show_log": True,
             "show_confidence": True,
             "time_gap": 15
@@ -129,11 +143,12 @@ class CLI:
             input("Press any key to continue...")
         elif choice == 9:
             self.logs.append("Exiting the application.")
+            Camera.restore_defaults(self.cam_defaults)
             sys.exit(0)
 
     def register_user_camera(self):
         try:
-            img = self.cam.capture_image()
+            img = self.cam.capture_image(cam_defaults=self.cam_defaults)
             if img is None:
                 self.logs.append("No image captured from camera.")
                 return
@@ -214,7 +229,7 @@ class CLI:
 
     def keypress_recognition(self):
         try:
-            img = self.cam.capture_image()
+            img = self.cam.capture_image(cam_defaults=self.cam_defaults)
             if img is None:
                 self.logs.append("No image captured from camera.")
                 return
@@ -274,6 +289,8 @@ class CLI:
         rec_users = mp.Queue()
         mp1 = mp.Process(target=self.recognise_user, args=(ls_frame,stop_event,rec_users))
         mp1.start()
+        if self.config['camera_index'] not in self.cam_defaults:
+            self.cam_defaults[self.config['camera_index']] = Camera.get_defaults(self.config['camera_index'])
         self.cam.capture_real_time(ls_frame, stop_event)
         mp1.join()
         while not rec_users.empty():
@@ -420,10 +437,11 @@ class CLI:
 
     def configure_camera(self):
         cam_config = self.camera_config
+        cam_defaults = self.cam_defaults.get(self.config['camera_index'], Camera.get_defaults(self.config['camera_index']))
         while True:
             choice = configure_camera_menu()
             if choice == 1:
-                self.cam.capture_image(cam_config)
+                self.cam.capture_image(cam_config, cam_defaults=self.cam_defaults)
             elif choice == 2:
                 cam_idx = input_int("Enter camera index: ", default=cam_config['camera_index'], range_min=0)
                 if Camera.test_camera_idx(cam_idx):
@@ -441,39 +459,113 @@ class CLI:
                     cam_config['camera_fps'] = fps
                     self.logs.append(f"Camera frame rate set to {fps} FPS.")
             elif choice == 5:
-                brightness = input_int("Enter camera brightness (0 to 100): ", default=int(cam_config['camera_brightness']*100), range_min=0, range_max=1)
-                cam_config['camera_brightness'] = float(brightness)/100
-                self.logs.append(f"Camera brightness set to {brightness}%.")
+                focus = input_int("Enter camera focus (0 to 100): ", default=int(cam_config.get('camera_focus', 0)*100), range_min=-1, range_max=100)
+                if focus >= 0:
+                    cam_config['camera_focus'] = float(focus)/100
+                    self.logs.append(f"Camera focus set to {focus}%.")
+                else:
+                    cam_config['camera_focus'] = -1
+                    self.logs.append("Camera focus set to auto.")
             elif choice == 6:
-                contrast = input_int("Enter camera contrast (0 to 100): ", default=int(cam_config['camera_contrast']*100), range_min=0, range_max=1)
-                cam_config['camera_contrast'] = float(contrast)/100
-                self.logs.append(f"Camera contrast set to {contrast}%.")
+                brightness = input_int("Enter camera brightness (0 to 100): ", default=int(cam_config['camera_brightness']*100), range_min=-1, range_max=100)
+                if brightness < 0:
+                    cam_config['camera_brightness'] = cam_defaults['camera_brightness']
+                    self.logs.append("Camera brightness set to default value.")
+                else:
+                    cam_config['camera_brightness'] = float(brightness)/100
+                    self.logs.append(f"Camera brightness set to {brightness}%.")
             elif choice == 7:
-                saturation = input_int("Enter camera saturation (0 to 100): ", default=int(cam_config['camera_saturation']*100), range_min=0, range_max=1)
-                cam_config['camera_saturation'] = float(saturation)/100
-                self.logs.append(f"Camera saturation set to {saturation}%.")
+                contrast = input_int("Enter camera contrast (0 to 100): ", default=int(cam_config['camera_contrast']*100), range_min=-1, range_max=100)
+                if contrast < 0:
+                    cam_config['camera_contrast'] = cam_defaults['camera_contrast']
+                    self.logs.append("Camera contrast set to default value.")
+                else:
+                    cam_config['camera_contrast'] = float(contrast)/100
+                    self.logs.append(f"Camera contrast set to {contrast}%.")
             elif choice == 8:
-                exposure = input_int("Enter camera exposure (0 to 100): ", default=int(cam_config['camera_exposure']*100), range_min=0, range_max=1)
-                cam_config['camera_exposure'] = float(exposure)/100
-                self.logs.append(f"Camera exposure set to {exposure}%.")
+                saturation = input_int("Enter camera saturation (0 to 100): ", default=int(cam_config['camera_saturation']*100), range_min=-1, range_max=100)
+                if saturation < 0:
+                    cam_config['camera_saturation'] = cam_defaults['camera_saturation']
+                    self.logs.append("Camera saturation set to default value.")
+                else:
+                    cam_config['camera_saturation'] = float(saturation)/100
+                    self.logs.append(f"Camera saturation set to {saturation}%.")
             elif choice == 9:
-                gain = input_int("Enter camera gain (0 to 100): ", default=int(cam_config['camera_gain']*100), range_min=0, range_max=1)
-                cam_config['camera_gain'] = float(gain)/100
-                self.logs.append(f"Camera gain set to {gain}%.")
+                exposure = input_int("Enter camera exposure (0 to 100): ", default=int(cam_config['camera_exposure']*100), range_min=-1, range_max=100)
+                if exposure >= 0:
+                    cam_config['camera_exposure'] = float(exposure)/100
+                    self.logs.append(f"Camera exposure set to {exposure}%.")
+                else:
+                    cam_config['camera_exposure'] = -1
+                    self.logs.append("Camera exposure set to auto.")
             elif choice == 10:
+                gain = input_int("Enter camera gain (0 to 100): ", default=int(cam_config['camera_gain']*100), range_min=-1, range_max=100)
+                if gain >= 0:
+                    cam_config['camera_gain'] = float(gain)/100
+                    self.logs.append(f"Camera gain set to {gain}%.")
+                else:
+                    cam_config['camera_gain'] = cam_defaults['camera_gain']
+                    self.logs.append("Camera gain set to default value.")
+            elif choice == 11:
+                hue = input_int("Enter camera hue (0 to 100): ", default=int(cam_config.get('camera_hue', 0)*100), range_min=-1, range_max=100)
+                if hue < 0:
+                    cam_config['camera_hue'] = cam_defaults.get('camera_hue', 0)
+                    self.logs.append("Camera hue set to default value.")
+                else:
+                    cam_config['camera_hue'] = float(hue)/100
+                    self.logs.append(f"Camera hue set to {hue}%.")
+            elif choice == 12:
+                sharpness = input_int("Enter camera sharpness (0 to 100): ", default=int(cam_config.get('camera_sharpness', 0)*100), range_min=-1, range_max=100)
+                if sharpness < 0:
+                    cam_config['camera_sharpness'] = cam_defaults.get('camera_sharpness', 0)
+                    self.logs.append("Camera sharpness set to default value.")
+                else:
+                    cam_config['camera_sharpness'] = float(sharpness)/100
+                    self.logs.append(f"Camera sharpness set to {sharpness}%.")
+            elif choice == 14:
+                gamma = input_int("Enter camera gamma (0 to 100): ", default=int(cam_config.get('camera_gamma', 0)*100), range_min=-1, range_max=100)
+                if gamma < 0:
+                    cam_config['camera_gamma'] = cam_defaults.get('camera_gamma', 0)
+                    self.logs.append("Camera gamma set to default value.")
+                else:
+                    cam_config['camera_gamma'] = float(gamma)/100
+                    self.logs.append(f"Camera gamma set to {gamma}%.")
+            elif choice == 13:
+                wb = input_int("Enter camera white balance (0 to 100): ", default=int(cam_config.get('camera_white_balance', 0)*100), range_min=-1, range_max=100)
+                if wb >= 0:
+                    cam_config['camera_white_balance'] = float(wb)/100
+                    self.logs.append(f"Camera white balance set to {wb}%.")
+                else:
+                    cam_config['camera_white_balance'] = -1
+                    self.logs.append("Camera white balance set to auto.")
+            elif choice == 15:
+                ct = input_int("Enter camera color temperature (0 to 100): ", default=int(cam_config.get('camera_color_temperature', 0)*100), range_min=-1, range_max=100)
+                if ct < 0:
+                    cam_config['camera_color_temperature'] = -1
+                    self.logs.append("Camera color temperature set to auto.")
+                else:
+                    cam_config['camera_color_temperature'] = float(ct)/100
+                    self.logs.append(f"Camera color temperature set to {ct}%.")
+            elif choice == 16:
                 self.camera_config = cam_config
                 self.config['camera_index'] = cam_config['camera_index']
                 self.config['camera_resolution'] = cam_config['camera_resolution']
                 self.config['camera_fps'] = cam_config['camera_fps']
+                self.config['camera_focus'] = cam_config.get('camera_focus', 0)
                 self.config['camera_brightness'] = cam_config['camera_brightness']
                 self.config['camera_contrast'] = cam_config['camera_contrast']
                 self.config['camera_saturation'] = cam_config['camera_saturation']
                 self.config['camera_exposure'] = cam_config['camera_exposure']
                 self.config['camera_gain'] = cam_config['camera_gain']
+                self.config['camera_hue'] = cam_config.get('camera_hue', 0)
+                self.config['camera_sharpness'] = cam_config.get('camera_sharpness', 0)
+                self.config['camera_gamma'] = cam_config.get('camera_gamma', 0)
+                self.config['camera_white_balance'] = cam_config.get('camera_white_balance', 0)
+                self.config['camera_color_temperature'] = cam_config.get('camera_color_temperature', 0)
                 self.save_config(self.config)
-            if choice < 11:
+            if choice < 17:
                 input("Press Enter to continue...")
-            if choice == 11:
+            if choice == 17:
                 return
             
 
