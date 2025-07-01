@@ -51,13 +51,11 @@ class Excel_handle:
             if cell_value == id:
                 return rn
         return None
-    
 
     def write_to_excel(self,name, id, confidence, tg ,dt = None):
         row_num = self.get_row_number(id)
-        
         if dt is None:
-            dt = datetime.now().strftime("%d/%m/%Y") + " - " + datetime.now().strftime("%H:%M:%S")
+            dt = datetime.now().strftime("%d/%m/%Y - %H:%M:%S")
         confidence = float(confidence)
         confidence = round((1-confidence) * 100, 2)  # Convert to percentage
         if row_num is None:
@@ -85,8 +83,6 @@ class Excel_handle:
             if dim is None:
                 self.ws.column_dimensions[col] = ColumnDimension(self.ws, col)
             self.ws.column_dimensions[col].width = max(self.ws.column_dimensions[col].width or 0, width)
-
-        
         self.wb.save(self.path)
         return True
             

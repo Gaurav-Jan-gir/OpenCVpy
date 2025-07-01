@@ -2,13 +2,14 @@ from tkinter import *
 from tkinter import ttk
 from tkinter.ttk import Combobox
 from gui_functions import *
-from LoadData import loadData
+from load import Load
 from tkinter import filedialog
 import json
 from excel_handle import Excel_handle
 from multiprocessing import Process, Queue, Manager
-import shutil
 from dynamic_size import DynamicSize as ds
+from logs import Logs
+from camera import Camera
 
 def dateWidget(frame, row, column, label_text, entry_width=20):
     label = Label(frame, text=label_text)
@@ -198,25 +199,20 @@ class GUI:
         self.frame = ttk.Frame(root, padding=10)
         self.frame.grid(row=0, column=0, sticky="NS") 
         self.path = get_safe_data_path()
-        self.cap = [None] 
-        self.control_flag = False
-        self.latest_image = [None]
         self.faces = []
         self.locations = []
         self.encodings = []
-        self.data = loadData()
+        self.save = Save(self.path)
         self.config_path = os.path.join(self.path, 'config.json')
         self.config = self.load_config(self.config_path)
-        self.confidence_match = self.config["confidence_match"]
-        self.save_confidence = self.config["confidence_save"]
-        self.showConfidence = self.config["show_confidence"]
-        self.camera_index = self.config["camera_index"]  # Default to 0 if not set
-        self.camera_resolution = self.config["camera_resolution"]  # Default to (640, 480) if not set
-        self.camera_fps = self.config["camera_fps"]  # Default to 30 if not set
-        self.aspect_ratio = self.config["aspect_ratio"]  # Default to "16:9" if not set
-        self.tg = self.config["time_gap"]
-        self.ex = Excel_handle(os.path.join(self.path,'data.xlsx'))
-        self.fps = 30 
+        self.cam = Camera(self.config)
+        self.cam_defaults = {}
+        self.cap = [None] 
+        self.control_flag = False
+        self.latest_image = [None]
+        self.logs = Logs(self.config['show_log'] if 'show_log' in self.config else True)
+        self.data = Load(self.path, self.logs)
+        self.ex = Excel_handle(os.path.join(self.path,'user_data.xlsx'))
         self.root.rowconfigure(0, weight=1)
         root.columnconfigure(0, weight=1)
         self.fs = ds(root)
@@ -232,8 +228,10 @@ class GUI:
             'check_boxes': [],
             'scales': [],
             'list_boxes': [],
-            'scrollbars': []
+            'scrollbars': [],
+            'combo_boxes': []
         }
+        self.root.bind('<Escape>', self.exit_gui)  # Bind Escape key to exit_gui
 
     def exit_gui(self, event=None):  # Accept event argument for key binding
         new_root = Toplevel(self.root)
@@ -262,7 +260,12 @@ class GUI:
         new_root.geometry(f"+{x}+{y}")
 
         new_root.bind("<Escape>", lambda e: new_root.destroy())
-        new_root.bind("<Return>", lambda e: self.root.quit())
+        new_root.bind("<Return>", lambda e: self.on_destroy())
+
+    def on_destroy(self,event=None):
+        self.cam.restore_defaults(self.cam_defaults)
+        self.save_config (self.config, self.config_path)
+        self.root.quit()
 
 
     def load_config(self,config_path=None):
@@ -270,22 +273,30 @@ class GUI:
             "confidence_match": 0.4,
             "confidence_save": 0.4,
             "show_confidence": False,
+            "show_log": True,
             "time_gap": 3600,
-            "camera_index": "Camera 1",  # Default camera index
-            "camera_resolution": "640x480",
-            "camera_fps": "25",
-            "aspect_ratio": "16:9"
+            "camera_index": 0,  # Default camera index
+            "camera_resolution": (640, 480),
+            "camera_fps": 30,
+            "aspect_ratio": "16:9",
+            "camera_light_balance": -1  # Default light balance
         }
+        config = default_config.copy()
         if config_path is None:
             config_path = self.config_path
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r') as f:
                     user_config = json.load(f)
-                    default_config.update(user_config)
+                    config.update(user_config)
+                    print(f'path {config_path} loaded')
             except Exception as e:
                 print(f"Error loading config: {e}")
-        return default_config
+            for key, value in default_config.items():
+                if key not in config:
+                    config[key] = value
+        
+        return config
 
     def save_config(self,config, config_path=None):
         if config_path is None:
@@ -362,13 +373,15 @@ class GUI:
         for message in self.widgets.messages:
             self.retrieve_data['messages'].append(message.cget("text").strip())
         for check_box in self.widgets.check_boxes:
-            self.retrieve_data['check_boxes'].append(check_box.get())
+            self.retrieve_data['check_boxes'].append(check_box.var.get())
         for scale in self.widgets.scales:
             self.retrieve_data['scales'].append(scale.get())
         for list_box in self.widgets.list_boxes:
             self.retrieve_data['list_boxes'].append(list_box.get(0, END))
         for scrollbar in self.widgets.scrollbars:
             self.retrieve_data['scrollbars'].append(scrollbar.get())
+        for combobox in self.widgets.combo_boxes:
+            self.retrieve_data['combo_boxes'].append(combobox.get())
 
     def restore_frame_data(self):
         for i, entry in enumerate(self.widgets.entries):
@@ -384,7 +397,10 @@ class GUI:
                 message.config(text=self.retrieve_data['messages'][i])
         for i, check_box in enumerate(self.widgets.check_boxes):
             if i < len(self.retrieve_data['check_boxes']):
-                check_box.set(self.retrieve_data['check_boxes'][i])
+                if self.retrieve_data['check_boxes'][i]:
+                    check_box.var.set(True)
+                else:
+                    check_box.var.set(False)
         for i, scale in enumerate(self.widgets.scales):
             if i < len(self.retrieve_data['scales']):
                 scale.set(self.retrieve_data['scales'][i])
@@ -407,7 +423,7 @@ class GUI:
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         buttons_text = ['Register', 'Recognize','Operate Data', 'Settings', 'Exit']
         buttons_position = [(1, 0), (2, 0), (3, 0), (4, 0),(5, 0)]
-        buttons_command = [self.register_gui, self.recognize_gui, self.op_data ,self.config_gui, root.destroy]
+        buttons_command = [self.register_gui, self.recognize_gui, self.op_data ,self.config_gui, self.on_destroy]
         key_bindings = ['r', 'n', 'o', 's', 'e']  # Key bindings for buttons
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
@@ -430,9 +446,9 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Camera Capture", font=self.fs.get_main_label_font()))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.control_flag = True
-        print(f"Camera Index = {self.camera_index} Resolution = {self.camera_resolution} fps = {self.camera_fps}")
+        self.cap[0] = self.cam.set_camera(self.config, self.cam_defaults)
         try:
-            cframe, self.latest_image = camera_frame(Frame(self.frame), self.cap, self.control_flag, row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.camera_index, camera_resolution=self.camera_resolution, fps=self.camera_fps)
+            cframe, self.latest_image = camera_frame(Frame(self.frame), self.cap, self.control_flag, row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.config["camera_index"], camera_resolution=self.config["camera_resolution"], fps=self.config["camera_fps"])
             self.widgets.camera_frames.append(cframe)
         except Exception as e:
             self.widgets.texts.append(Text(self.frame, width=40, height=17))
@@ -440,6 +456,8 @@ class GUI:
             self.widgets.texts[-1].configure(font=self.fs.get_text_font())
             self.widgets.texts[-1].configure(state=DISABLED)
             self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
+            self.control_flag = False
+            self.cap[0] = None
         self.widgets.labels.append(Label(self.frame,text='Enter Details',font = self.fs.get_main_label_font(weight='normal')))
         self.widgets.labels[-1].grid(row = 1,column = 4, columnspan = 4)
         self.widgets.labels.append(Label(self.frame, text="Enter ID : ", font=self.fs.get_text_font()))
@@ -466,29 +484,33 @@ class GUI:
             self.widgets.messages.append(Message(self.frame, text=message, width=200, font=self.fs.get_text_font()))
             self.widgets.messages[-1].grid(column=0, row=6, columnspan=4)
             return
-        self.faces,self.locations,self.encodings = get_cropped_faces_locations(self.latest_image[0])
+        self.locations = Camera.get_face_locations(self.latest_image[0])
+        self.encodings = Camera.get_face_encodings(self.latest_image[0], self.locations)
         return self.put_rectangle(put)
     
     def put_rectangle(self, put=False):
-        if self.faces is not None and len(self.faces) > 0 and not (len(self.faces) == 1 and self.faces[0] is None):
-            image, self.matched = match_image(self.faces[-1], self.locations[-1], self.data, self.save_confidence, self.latest_image[0])
-            self.faces.pop()
+        if self.locations is not None and len(self.locations) > 0 and not (len(self.locations) == 1 and self.locations[0] is None):
+            res = match_image(self.encodings[-1], self.locations[-1], self.data, self.config["confidence_save"], self.latest_image[0])
+            if res is not None:
+                image, self.matched = res
             self.locations.pop()
+            if res is None:
+                return None
             if put:
                 return self.matched
             self.clear_camera_frame()
             self.widgets.camera_frames.append(cam_reg_gui_capture(Frame(self.frame, width=40, height=17), image, row=1, column=0, rowspan=4, columnspan=4))
             if self.matched is not None:
                 self.widgets.entries[0].delete(0, END)
-                self.widgets.entries[0].insert(0, str(self.matched[1]))
+                self.widgets.entries[0].insert(0, str(self.matched[0][1]))
                 
                 self.widgets.entries[1].delete(0, END)
-                self.widgets.entries[1].insert(0, str(self.matched[0]))
+                self.widgets.entries[1].insert(0, str(self.matched[0][0]))
             
     def skip_face(self):
         if len(self.encodings) > 0:
             self.encodings.pop()
-            if len(self.faces) > 0:
+            if len(self.locations) > 0:
                 self.put_rectangle()
         
     def cam_reg_gui_recapture(self):
@@ -497,8 +519,9 @@ class GUI:
         self.locations.clear()
         self.encodings.clear()
         self.control_flag = True
+        self.cap[0] = self.cam.set_camera(self.config, self.cam_defaults)
         try:
-            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.camera_index, camera_resolution=self.camera_resolution, fps=self.camera_fps)
+            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.config["camera_index"], camera_resolution=self.config["camera_resolution"], fps=self.config["camera_fps"])
             self.widgets.camera_frames.append(cframe)
         except Exception as e:
             self.widgets.texts.append(Text(self.frame, width=40, height=17))
@@ -507,6 +530,7 @@ class GUI:
             self.widgets.texts[-1].configure(state=DISABLED)
             self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
             self.control_flag = False
+            self.cap[0] = None
 
     def reg_gui_register(self, imag_reg = False):
         if self.widgets.entries[0].get() == "" or self.widgets.entries[1].get() == "":
@@ -517,8 +541,8 @@ class GUI:
             return
         if len(self.encodings) == 0:
             return
-        new_data,new_labels = save_image_data(self.encodings[-1],self.widgets.entries[1].get(), self.widgets.entries[0].get(), self.data, showConfidence=True, threshold_confidence=self.save_confidence)
-        self.data.append_data_in_burst(new_data, new_labels)
+        dno = save_image_data(self.encodings[-1],self.save,self.widgets.entries[1].get(), self.widgets.entries[0].get())
+        self.data.append_new_data(self.encodings[-1], self.widgets.entries[1].get(), self.widgets.entries[0].get(), dno)
         self.encodings.pop()
         if len(self.faces) != 0:
             self.put_rectangle()
@@ -539,9 +563,9 @@ class GUI:
             return
         if len(self.encodings) == 0:
             return
-        saveData.changeAllMatchData(self.matched[0],self.matched[1],self.widgets.entries[1].get(), self.widgets.entries[0].get())
-        new_data,new_labels = save_image_data(self.encodings[-1],self.widgets.entries[1].get(), self.widgets.entries[0].get(), self.data, showConfidence=True, threshold_confidence=self.save_confidence)
-        self.data.append_data_in_burst(new_data, new_labels)
+        update_user(self.path,self.matched[0],self.matched[1],self.widgets.entries[1].get(), self.widgets.entries[0].get())
+        dno = save_image_data(self.encodings[-1],self.save,self.widgets.entries[1].get(), self.widgets.entries[0].get())
+        self.data.append_new_data(self.encodings[-1], self.widgets.entries[1].get(), self.widgets.entries[0].get(), dno)
         self.encodings.pop()
         if len(self.faces) != 0:
             self.put_rectangle()
@@ -594,7 +618,8 @@ class GUI:
                 self.widgets.texts.pop()
             self.widgets.camera_frames.append(frame)
             self.latest_image[0] = image
-            self.faces,self.locations,self.encodings = get_cropped_faces_locations(self.latest_image[0])
+            self.locations = Camera.get_face_locations(self.latest_image[0])
+            self.encodings = Camera.get_face_encodings(self.latest_image[0], self.locations)
             self.put_rectangle()
         else:
             self.clear_status_messages(row=6, column=0)  # Clear messages at row 6, column 0
@@ -692,8 +717,9 @@ class GUI:
         self.clear_camera_frame()
         self.control_flag = True
         self.st = Manager().list()  # Use a Manager list for inter-process communication
+        self.cap[0] = self.cam.set_camera(self.config, self.cam_defaults)
         try:
-            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4, st=[self.st], path_save=os.path.join(self.path,'captured_images'),camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.camera_index, camera_resolution=self.camera_resolution, fps=self.camera_fps)
+            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4, st=[self.st], path_save=os.path.join(self.path,'captured_images'),camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.config["camera_index"], camera_resolution=self.config["camera_resolution"], fps=self.config["camera_fps"])
             self.widgets.camera_frames.append(cframe)
         except Exception as e:
             self.widgets.texts.append(Text(self.frame, width=40, height=17))
@@ -702,9 +728,10 @@ class GUI:
             self.widgets.texts[-1].configure(state=DISABLED)
             self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
             self.control_flag = False
+            self.cap[0] = None
             return
         self.qu = Queue()
-        self.rec_process = Process(target= self.real_time_rec, args=(self.st,self.qu,self.data,self.confidence_match))
+        self.rec_process = Process(target= self.real_time_rec, args=(self.st,self.qu,self.data,self.config["confidence_match"]))
         self.rec_process.daemon = True
         self.rec_process.start()
 
@@ -715,17 +742,18 @@ class GUI:
             while not self.qu.empty():
                 matched = self.qu.get_nowait()
                 if matched is not None:
-                    if self.ex.write_to_excel(matched[0], matched[1], matched[2], self.tg):
+                    if self.ex.write_to_excel(matched[0][0], matched[0][1], matched[1], self.config["time_gap"]):
                         self.widgets.texts[-1].configure(state=NORMAL)
-                        self.widgets.texts[-1].insert(END, f"Name: {matched[0]} ID: {matched[1]}" + f" Confidence: {((1-matched[3])*100):.2f}% \n" if self.showConfidence else "\n")
+                        self.widgets.texts[-1].insert(END,f"Name: {matched[0][0]} ID: {matched[0][1]}")
+                        self.widgets.texts[-1].insert(END,f" Confidence: {((1-matched[1])*100):.2f}% \n" if self.config["show_confidence"] else "\n")
                         self.widgets.texts[-1].configure(state=DISABLED)
-                    
+
         except Exception as e:
             print(f"Error in poll_queue: {e}")
-        
-        if self.control_flag:
-            self.root.after(100, lambda: self.poll_queue())
-        
+        finally:
+            if self.control_flag:
+                self.root.after(100, lambda: self.poll_queue())
+
     def real_time_rec_gui_stop(self):
         self.control_flag = False
         if hasattr(self, 'rec_process') and self.rec_process.is_alive():
@@ -733,31 +761,30 @@ class GUI:
             self.rec_process.join()
         self.st[:] = []
         self.qu.close()
-        shutil.rmtree(os.path.join(self.path, 'captured_images'), ignore_errors=True)
-
         self.clear_camera_frame()
 
     @staticmethod
     def real_time_rec(st, qu, load_data, confidence_match):
         while len(st) > 0:
-            img_path = st.pop()
-            image = read_image(img_path, convert_to_bgr=True)
+            image = st.pop() 
             if image is not None:
-                faces, locations, encodings = get_cropped_faces_locations(image)
-                while len(encodings) > 0:
-                    img, matched = match_image(faces[-1], locations[-1], load_data, confidence_match, image)
-                    faces.pop()
-                    locations.pop()
-                    encodings.pop()
-                    if matched is not None and matched[3] is not None and matched[3] < confidence_match:
+                locs = Camera.get_face_locations(image)
+                encs = Camera.get_face_encodings(image, locs)
+                while len(encs) > 0:
+                    res = match_image(encs[-1], locs[-1], load_data, confidence_match, image)
+                    locs.pop()
+                    encs.pop()
+                    if res is not None:
+                        _, matched = res
+                    else:
+                        matched = None
+                    if matched is not None and matched[1] < confidence_match:
                         try:
                             qu.put(matched)
                         except Exception:
                             return # Adjust sleep time as needed
-            # if(len(st) > 80):
-            #     s1 = st[0:len(st)//2]
-            #     del st[0:len(st)//2]
-            #     clear_images(s1)
+            if len(st) > 20:
+                del st[:10]  # Clear the list to prevent memory overflow
 
 
     def keypress_rec_gui(self):
@@ -767,8 +794,9 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Keypress Recognition", font=self.fs.get_main_label_font()))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.control_flag = True
+        self.cap[0] = self.cam.set_camera(self.config, self.cam_defaults)
         try:
-            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.camera_index, camera_resolution=self.camera_resolution, fps=self.camera_fps)
+            cframe,self.latest_image = camera_frame(Frame(self.frame,width=40,height=17),self.cap, self.control_flag ,row=1, column=0, rowspan=4, columnspan=4,camera_frame_size= self.fs.get_camera_frame_size(),camera_index=self.config["camera_index"], camera_resolution=self.config["camera_resolution"], fps=self.config["camera_fps"])
             self.widgets.camera_frames.append(cframe)
         except Exception as e:
             self.widgets.texts.append(Text(self.frame, width=40, height=17))
@@ -776,6 +804,8 @@ class GUI:
             self.widgets.texts[-1].configure(font=self.fs.get_text_font())
             self.widgets.texts[-1].configure(state=DISABLED)
             self.widgets.texts[-1].grid(row=1, column=0, columnspan=4,rowspan=4)
+            self.control_flag = False
+            self.cap[0] = None
         self.widgets.labels.append(Label(self.frame,text='Last Recognised Users',font = self.fs.get_main_label_font(weight='normal')))
         self.widgets.labels[-1].grid(row = 1,column = 4, columnspan = 2)
         self.widgets.buttons.create_button('reco', 'Recognize', (1 ,1), self.keypress_rec_gui_reco,key_bind='r')
@@ -797,9 +827,10 @@ class GUI:
         while len(self.encodings) > 0:
             self.encodings.pop()
             if matched is not None:
-                if self.ex.write_to_excel(matched[0],matched[1],matched[2],self.tg):
+                if self.ex.write_to_excel(matched[0][0],matched[0][1],matched[1],self.config["time_gap"]):
                     self.widgets.texts[-1].configure(state = NORMAL)
-                    self.widgets.texts[-1].insert(END,f"Name: {matched[0]} ID: {matched[1]}"+f" Confidence: {((1-matched[3])*100):.2f}% \n" if self.showConfidence else "\n")
+                    self.widgets.texts[-1].insert(END,f"Name: {matched[0][0]} ID: {matched[0][1]}")
+                    self.widgets.texts[-1].insert(END,f" Confidence: {((1-matched[1])*100):.2f}% \n" if self.config["show_confidence"] else "\n")
                     self.widgets.texts[-1].configure(state = DISABLED)
             if len(self.encodings) > 0:
                 matched = self.put_rectangle(True)
@@ -1065,7 +1096,7 @@ class GUI:
 
     def update_camera_resolution_list(self, cam_resolution_list):
         try:
-            cam_index = self.widgets.combo_boxes[0].get()
+            cam_index = int(self.widgets.combo_boxes[0].get().split()[-1]) - 1  # Get the camera index from the selected camera name
             aspect_ratio = self.widgets.combo_boxes[1].get()
         except (ValueError, IndexError):
             self.clear_status_messages(row=6, column=0)
@@ -1074,6 +1105,7 @@ class GUI:
             self.widgets.messages[-1].grid(column=0, row=6, columnspan=2)
             return
         cam_resolution_list.clear()
+        print(f"Updating camera resolution list for camera index {cam_index} and aspect ratio {aspect_ratio}")
         cam_resolution_list.extend(get_camera_resolution_list(cam_index, aspect_ratio))
 
         if len(self.widgets.combo_boxes) >= 3:
@@ -1085,7 +1117,7 @@ class GUI:
         try:
             cam_index = int(self.widgets.combo_boxes[0].get().split()[-1])-1  # Get the camera index from the selected camera name
             aspect_ratio = self.widgets.combo_boxes[1].get()
-            resolution = self.widgets.combo_boxes[2].get()
+            resolution = tuple(map(int, self.widgets.combo_boxes[2].get().split('x')))
         except (ValueError, IndexError):
             self.clear_status_messages(row=6, column=0)
             message = "Please select a valid camera, aspect ratio, and resolution."
@@ -1106,7 +1138,7 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Camera Settings", font=self.fs.get_main_label_font()))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
         self.widgets.combo_boxes.append(Combobox(self.frame, values=get_available_cameras(), width=30))
-        self.widgets.combo_boxes[-1].set(self.config.get('camera_index', 'Camera 1'))
+        self.widgets.combo_boxes[-1].set(f"Camera {self.config.get('camera_index', 0) + 1}")
         self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
         self.widgets.combo_boxes[-1].grid(column=1, row=1, columnspan=2)
         self.widgets.labels.append(Label(self.frame, text="Select Camera:", font=self.fs.get_text_font()))
@@ -1123,32 +1155,85 @@ class GUI:
         self.widgets.labels.append(Label(self.frame, text="Camera Resolution:", font=self.fs.get_text_font()))
         self.widgets.labels[-1].grid(column=0, row=3, sticky='w')
         self.widgets.combo_boxes.append(Combobox(self.frame, values=cam_resolution_list, width=30))
-        self.widgets.combo_boxes[-1].set(self.config.get('camera_resolution', '1280x720'))
+        self.widgets.combo_boxes[-1].set(f"{self.config.get('camera_resolution', (1280, 720))[0]}x{self.config.get('camera_resolution', (1280, 720))[1]}")
         self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
-        self.widgets.combo_boxes[-1].grid(column = 1, row = 3, columnspan = 2)
+        self.widgets.combo_boxes[-1].grid(column=1, row=3, columnspan=2)
         self.widgets.combo_boxes[1].bind("<<ComboboxSelected>>", lambda e: self.update_camera_resolution_list(cam_resolution_list))
         self.widgets.combo_boxes[0].bind("<<ComboboxSelected>>", lambda e: self.update_camera_resolution_list(cam_resolution_list))
 
         self.widgets.labels.append(Label(self.frame, text="Frame Per Second (FPS):", font=self.fs.get_text_font()))
         self.widgets.labels[-1].grid(column=0, row=4, sticky='w')
         self.widgets.combo_boxes.append(Combobox(self.frame, values=get_fps_list(), width=30))
-        self.widgets.combo_boxes[-1].set(self.config.get('camera_fps', '30'))
+        self.widgets.combo_boxes[-1].set(self.config.get('camera_fps', 30))
         self.widgets.combo_boxes[-1].configure(font=self.fs.get_text_font())
         self.widgets.combo_boxes[-1].grid(column=1, row=4, columnspan=2)
         self.widgets.combo_boxes[2].bind("<<ComboboxSelected>>", lambda e: self.update_fps_list())
 
-        buttons_text = ['Save', 'Back', 'Main Menu']
-        buttons_position = [(5, 0), (5, 1), (5, 2)]
-        buttons_command = [self.camera_config_save, self.config_gui, self.start_gui]
-        key_bindings = ['s','b','m']
+        self.widgets.labels.append(Label(self.frame, text="Light Balance ", font=self.fs.get_text_font()))
+        self.widgets.labels[-1].grid(column=0, row=5, columnspan=1)
+        self.widgets.scales.append(Scale(self.frame, orient='horizontal'))
+        self.widgets.scales[-1].set((1- self.config["camera_light_balance"]) * 100)
+        self.widgets.scales[-1].grid(column=1, row=5, columnspan=1, sticky='ew')
+        auto_lb = BooleanVar(value=self.config["camera_light_balance"] == -1)
+        self.widgets.check_boxes.append(Checkbutton(self.frame, text="Auto", font=self.fs.get_text_font(weight='normal'), variable=auto_lb, command=lambda: self.widgets.scales[-1].configure(state='disabled' if auto_lb.get() else 'normal')))
+        self.widgets.check_boxes[-1].grid(column=2, row=5, columnspan=1)
+        self.widgets.check_boxes[-1].var = auto_lb
+
+        self.widgets.texts.append(Text(self.frame, width=50, height=27))
+        self.widgets.texts[-1].insert(END, "\n\n\n\n\n\n\n\n\n\n\n\n\n\t\tCamera preview.\n\n\n\n\n\n\n\n")
+        self.widgets.texts[-1].configure(font=self.fs.get_text_font())
+        self.widgets.texts[-1].configure(state=DISABLED)
+        self.widgets.texts[-1].grid(row=1, column=3, columnspan=4, rowspan=4)
+
+        buttons_text = ['Save', 'Back', 'Main Menu', 'Preview Toggle']
+        buttons_position = [(6, 0), (6, 1), (6, 2), (6, 4)]
+        buttons_command = [self.camera_config_save, self.config_gui, self.start_gui, self.cam_preview]
+        key_bindings = ['s','b','m','p']
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
 
+    def cam_preview(self):
+        if len(self.widgets.texts) != 0:
+            self.widgets.texts[-1].grid_remove()
+            self.widgets.texts.pop()
+            config = {
+                "camera_index": int(self.widgets.combo_boxes[0].get().split()[-1]) - 1,
+                "aspect_ratio": self.widgets.combo_boxes[1].get(),
+                "camera_resolution": tuple(map(int, self.widgets.combo_boxes[2].get().split('x'))),
+                "camera_fps": int(self.widgets.combo_boxes[3].get()),
+                "camera_light_balance": -1 if self.widgets.check_boxes[-1].var.get() else (self.widgets.scales[-1].get() / 100.0)
+            }
+            self.control_flag = True
+            self.cap[0] = self.cam.set_camera(config, self.cam_defaults)
+            try:
+                cframe, self.latest_image = camera_frame(Frame(self.frame, width=40, height=17), self.cap, self.control_flag, row=1, column=3, rowspan=4, columnspan=4, camera_frame_size=self.fs.get_camera_frame_size(), camera_index=config["camera_index"], camera_resolution=config["camera_resolution"], fps=config["camera_fps"])
+                self.widgets.camera_frames.append(cframe)
+            except Exception as e:
+                self.widgets.texts.append(Text(self.frame, width=50, height=27))
+                self.widgets.texts[-1].insert(END, f"\n\n\n\n\n\n\n\n\n\n\n\n\n\t\tError Accessing Camera: {e}\n\n\n\n\n\n\n\n")
+                self.widgets.texts[-1].configure(font=self.fs.get_text_font())
+                self.widgets.texts[-1].configure(state=DISABLED)
+                self.widgets.texts[-1].grid(row=1, column=3, columnspan=4, rowspan=4)
+                self.control_flag = False
+                self.cap[0] = None
+        else:
+            self.clear_camera_frame()
+            self.widgets.texts.append(Text(self.frame, width=50, height=27))
+            self.widgets.texts[-1].insert(END, "\n\n\n\n\n\n\n\n\n\n\n\n\n\t\tCamera preview.\n\n\n\n\n\n\n\n")
+            self.widgets.texts[-1].configure(font=self.fs.get_text_font())
+            self.widgets.texts[-1].configure(state=DISABLED)
+            self.widgets.texts[-1].grid(row=1, column=3, columnspan=4, rowspan=4)
+            
+
     def camera_config_save(self):
-        camera_index = self.widgets.combo_boxes[0].get()
+        camera_index = int(self.widgets.combo_boxes[0].get().split()[-1]) - 1
         aspect_ratio = self.widgets.combo_boxes[1].get()
-        resolution = self.widgets.combo_boxes[2].get()
-        fps = self.widgets.combo_boxes[3].get()
-        
+        resolution = tuple(map(int, self.widgets.combo_boxes[2].get().split('x')))
+        fps = int(self.widgets.combo_boxes[3].get())
+        if self.widgets.check_boxes[-1].var.get():
+            light_balance = -1
+        else:
+            light_balance = (self.widgets.scales[-1].get() / 100.0)
+
         if camera_index == "" or aspect_ratio == "" or resolution == "":
             self.clear_status_messages(row=5, column=0)
             message = "Please select a valid camera, aspect ratio, and resolution."
@@ -1156,15 +1241,12 @@ class GUI:
             self.widgets.messages[-1].grid(column=0, row=5, columnspan=2)
             return
         
-        self.camera_index = camera_index
-        self.aspect_ratio = aspect_ratio
-        self.camera_resolution = resolution
-        self.camera_fps = fps
+        self.config["camera_index"] = camera_index
+        self.config["aspect_ratio"] = aspect_ratio
+        self.config["camera_resolution"] = resolution
+        self.config["camera_fps"] = fps
+        self.config["camera_light_balance"] = light_balance
         
-        self.config['camera_index'] = camera_index
-        self.config['aspect_ratio'] = aspect_ratio
-        self.config['camera_resolution'] = resolution
-        self.config['camera_fps'] = fps
         self.save_config(self.config)
         
         self.clear_status_messages(row=6, column=0)
@@ -1181,7 +1263,7 @@ class GUI:
         self.widgets.entries.append(Entry(self.frame, width = 7))
         self.widgets.entries[-1].grid(column = 2, row = 0)
         self.widgets.entries[-1].configure(font=self.fs.get_text_font())
-        self.widgets.entries[-1].insert(END,self.tg)
+        self.widgets.entries[-1].insert(END,self.config["time_gap"])
         buttons_text = ['Save', 'Back', 'Main Menu']
         buttons_position = [(2,0),(2,1),(2,2)]
         buttons_command = [self.tg_save , self.config_gui, self.start_gui]
@@ -1189,12 +1271,11 @@ class GUI:
         self.widgets.buttons.create_buttons(buttons_text,buttons_position,buttons_command, key_bindings)
 
     def tg_save(self):
-        self.tg = self.widgets.entries[-1].get()
+        self.config["time_gap"] = self.widgets.entries[-1].get()
         try:
-            self.tg = int(self.tg)
-            if self.tg < 0:
+            self.config["time_gap"] = int(self.config["time_gap"])
+            if self.config["time_gap"] < 0:
                 raise ValueError("Time gap must be positive.")
-            self.config['time_gap'] = self.tg
             self.save_config(self.config)
             self.clear_status_messages(row=6, column=0)
             message = "Time gap updated successfully."
@@ -1212,19 +1293,21 @@ class GUI:
         self.clear_frame()
         self.widgets.labels.append(Label(self.frame, text="Confidence Settings", font=self.fs.get_main_label_font()))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        self.widgets.check_boxes.append(Checkbutton(self.frame, text="Show Confidence", font=self.fs.get_main_label_font(weight='normal')))
-        if self.showConfidence:
+        show_conf_var = BooleanVar(value=self.config["show_confidence"])
+        self.widgets.check_boxes.append(Checkbutton(self.frame, text="Show Confidence", font=self.fs.get_main_label_font(weight='normal'), variable=show_conf_var))
+        if self.config["show_confidence"]:
             self.widgets.check_boxes[-1].select()
         self.widgets.check_boxes[-1].grid(column=0, row=1, columnspan=2)
+        self.widgets.check_boxes[-1].var = show_conf_var
         self.widgets.labels.append(Label(self.frame, text="Save Confidence Threshold", font=self.fs.get_main_label_font(weight='normal')))
         self.widgets.labels[-1].grid(column=0, row=2, columnspan=1)
         self.widgets.scales.append(Scale(self.frame, orient='horizontal'))
-        self.widgets.scales[-1].set((1- self.save_confidence) * 100)
+        self.widgets.scales[-1].set((1- self.config["confidence_save"]) * 100)
         self.widgets.scales[-1].grid(column=1, row=2, columnspan=1, sticky='ew')
         self.widgets.labels.append(Label(self.frame, text="Match Confidence Threshold", font=self.fs.get_main_label_font(weight='normal')))
         self.widgets.labels[-1].grid(column=0, row=3, columnspan=1)
         self.widgets.scales.append(Scale(self.frame, orient='horizontal'))
-        self.widgets.scales[-1].set((1 - self.confidence_match) * 100)
+        self.widgets.scales[-1].set((1 - self.config["confidence_match"]) * 100)
         self.widgets.scales[-1].grid(column=1, row=3, columnspan=1, sticky='ew')
         buttons_text = ['Save','Back','Main Menu']
         buttons_position = [(4, 0), (4, 1), (4, 2)]
@@ -1234,13 +1317,9 @@ class GUI:
 
     def config_conf_gui_save(self):
         # Use IntVar for checkboxes, so get() returns 1/0
-        show_conf = self.widgets.check_boxes[-1].var.get() if hasattr(self.widgets.check_boxes[-1], 'var') else self.widgets.check_boxes[-1].instate(['selected'])
-        self.showConfidence = bool(show_conf)
-        self.save_confidence = 1 - (self.widgets.scales[-2].get() / 100)
-        self.confidence_match = 1 - (self.widgets.scales[-1].get() / 100)
-        self.config['show_confidence'] = self.showConfidence
-        self.config['confidence_save'] = self.save_confidence
-        self.config['confidence_match'] = self.confidence_match
+        self.config["show_confidence"] =  self.widgets.check_boxes[0].var.get()
+        self.config["confidence_save"] = 1 - (self.widgets.scales[-2].get() / 100)
+        self.config["confidence_match"] = 1 - (self.widgets.scales[-1].get() / 100)
         self.save_config(self.config)
         self.clear_status_messages(row=5, column=0)
         message = "Settings saved successfully."
@@ -1318,10 +1397,25 @@ class GUI:
 
 
 if __name__ == '__main__':
+    import backup
+    import traceback
 
-    root = Tk()
-    root.geometry("1280x720")
+    data_path = get_safe_data_path()
+    backup_path = get_safe_data_path('backup')
+    os.makedirs(backup_path, exist_ok=True)
 
-    gui = GUI(root)
-    gui.start_gui()
-    root.mainloop()
+    backup.backup_data(data_path, backup_path)
+
+    try:
+        root = Tk()
+        root.geometry("1280x720")
+        gui = GUI(root)
+        gui.start_gui()
+        root.mainloop()
+        backup.remove_backup(backup_path)
+
+    except Exception as e:
+        print("GUI crashed. Attempting to restore backup.")
+        traceback.print_exc()
+        backup.restore_backup(data_path, backup_path)
+        print("Backup restored. Please restart the application.")
