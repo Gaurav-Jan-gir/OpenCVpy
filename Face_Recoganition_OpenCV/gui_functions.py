@@ -2,23 +2,20 @@ import camera_embed as ce
 import os
 from tkinter import Frame
 from camera import Camera
-from SaveData import saveData
-from MatchData import match
+from save import Save
+from match import match
 import sys
 
-def get_safe_data_path():
+def get_safe_data_path(folder_name='data'):
     base_dir = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__))
-    data_path = os.path.join(base_dir, 'data')
+    data_path = os.path.join(base_dir, folder_name)
     os.makedirs(data_path, exist_ok=True)
     return data_path
 
-def camera_frame(frame, cap ,control_flag, row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1, st = [None], path_save=None , camera_frame_size=(640,480),camera_index="Camera 1",fps = "25",camera_resolution="640x480"):
+def camera_frame(frame, cap ,control_flag, row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1, st = [None], path_save=None , camera_frame_size=(640,480),camera_index=0,fps = 30,camera_resolution=(640,480)):
     frame.grid(row=row, column=column, padx=padx, pady=pady, rowspan=rowspan, columnspan=columnspan)
-    latest_frame = [None]  # Use list for mutability
-    cam_index = int(camera_index.split(' ')[-1])-1
-    resolution = (int(camera_resolution.split('x')[0]), int(camera_resolution.split('x')[1]))
-    cam_fps = int(fps)
-    ce.show_camera_embed(frame, cam_fps, cap, control_flag, latest_frame, st, path_save,camera_frame_size, camera_index=cam_index, resolution = resolution)
+    latest_frame = [None] 
+    ce.show_camera_embed(frame, fps, cap, control_flag, latest_frame, st, path_save,camera_frame_size, camera_index=camera_index, resolution = camera_resolution)
     return frame, latest_frame
 
 def cam_reg_gui_capture(parent_frame, image , row=0, column=0, padx=0, pady=0 , rowspan=1, columnspan=1):
@@ -35,29 +32,30 @@ def clear_images(ls):
         except Exception as e: 
             print(f"Error removing {img_path}: {e}")
 
-def get_cropped_faces_locations(image):
-    img_path = os.path.join(get_safe_data_path(),'img.jpg')
-    if image is None:
-        return [None],[None],[None]
-    Camera.img_write(image,img_path)
-    res =  Camera.crop_face(img_path)
-    if res is None:
-        return [None],[None],[None]
-    faces,locations = res
-    encodings = Camera.get_face_encodings(img_path, locations)
-    return faces, locations, encodings
+# def get_cropped_faces_locations(image):
+#     img_path = os.path.join(get_safe_data_path(),'img.jpg')
+#     if image is None:
+#         return [None],[None],[None]
+#     Camera.img_write(image,img_path)
+#     res =  Camera.crop_face(img_path)
+#     if res is None:
+#         return [None],[None],[None]
+#     faces,locations = res
+#     encodings = Camera.get_face_encodings(img_path, locations)
+#     return faces, locations, encodings
 
-def match_image(face,location,existing_data,threshold_confidence,img=None):
-    img_path = os.path.join(get_safe_data_path(),'img.jpg')
-    if face is not None:
-        matched = match(Camera.convert_to_rgb(face),existing_data)
-        if matched is not None and matched[3] is not None and matched[3] < threshold_confidence:
-            image = Camera.put_rectangle(img_path,location,None,None,embedding=True)
-            return image,matched
-        elif matched is not None:
-            image = Camera.put_rectangle(img,location,None,None,embedding=True)
-            return image,None
-    return None,None
+def match_image(encoding, location, existing_data, threshold_confidence, img):
+    image1 = img.copy()
+    try:
+        matched = match(encoding, existing_data)
+    except ValueError as e:
+        print(f"Error matching image: {e}")
+        return None, None
+    if matched is None:
+        return image1, None
+    elif matched[1] < threshold_confidence:
+        image1 = Camera.put_rect(image1, location)
+        return image1, matched
 
 def check_registration(name, id):
     file_path = os.path.join(get_safe_data_path(), f'{name}_{id}_0.npy')
@@ -65,18 +63,33 @@ def check_registration(name, id):
         return True
     return False
 
-def save_image_data(encoding, name=None, id=None,existing_data=None,showConfidence=False, threshold_confidence=0.4):
-    if existing_data is None:
-        existing_data = []
-    save_data = saveData(None, load_data=existing_data,showConfidence=showConfidence, threshold_confidence=threshold_confidence)
-    save_data.save_img(encoding, name, id)
-    return save_data.new_data,save_data.new_labels
+def update_user(path, name, id, new_name, new_id):
+    if new_id == id and new_name == name:
+        print("No changes made to the user.")
+        return
+    if not new_name or not new_id:
+        print("Name and ID cannot be empty.")
+        return
+    for file in os.listdir(path):
+        if file.startswith(f"{name}_{id}_"):
+            try:
+                dno = file.split('_')[-1]
+                os.rename(os.path.join(path, file), os.path.join(path, f"{new_name}_{new_id}_{dno}"))
+            except ValueError as e:
+                print(f"Error updating user: {e}")
+    print(f"User {name} with ID {id} updated successfully.")
+
+def save_image_data(encoding, save , name=None, id=None):
+    filename = save.get_filename(name, id)
+    dno = filename.split('_')[-1].split('.')[0]
+    save.save(encoding, filename)
+    return dno
 
 def destroy_camera(cap):
     ce.destroy_camera(cap)
 
-def read_image(image_path,convert_to_bgr = False):
-    return Camera.img_read(image_path, convert_to_bgr)
+def read_image(image_path):
+    return Camera.img_read(image_path)
 
 def resize_image(image, width=None, height=None):
     return Camera.resize_image(image, width, height)
@@ -163,7 +176,7 @@ def delete_user_entries(ex, c_row, entries,list_box):
 
 def get_available_cameras(max_cameras=10):
     cam_list = Camera.get_available_cameras(max_cameras)
-    cam_list = [f'Camera {cam+1}' for cam in cam_list]
+    cam_list = [f"Camera {i+1}" for i in cam_list]
     if not cam_list:
         cam_list = ["No cameras found"]
     return cam_list
@@ -176,44 +189,35 @@ def get_camera_index_from_name(name):
     except ValueError:
         return None
     
-def get_camera_resolution_list(camera_index="Camera 1", aspect_ratio="16:9"):
+def get_camera_resolution_list(camera_index=0, aspect_ratio="16:9"):
     """
     Returns a list of supported resolutions for a given camera and aspect ratio.
     """
-    if not camera_index or "No cameras" in camera_index:
+    if not isinstance(camera_index, int):
         return ["Select a camera"]
     if not aspect_ratio:
         return ["Select an aspect ratio"]
 
-    try:
-        cam_index = int(camera_index.split()[-1]) - 1
-    except (ValueError, IndexError):
-        return ["Invalid camera selected"]
-
     all_resolutions = {
-        "16:9": ["320x180", "640x360", "1280x720", "1920x1080", "2560x1440", "3840x2160"],
-        "4:3":  ["320x240", "640x480", "800x600", "960x720", "1024x768", "1280x960", "1600x1200"],
-        "1:1":  ["320x320", "480x480", "640x640", "720x720", "1080x1080"],
-        "21:9": ["1280x540", "1920x810", "2560x1080", "3440x1440"],
-        "3:2":  ["360x240", "720x480", "1080x720", "1440x960", "2160x1440"],
-        "5:4":  ["640x512", "800x640", "1280x1024"]
+        "16:9": [(320,180), (640,360), (1280,720), (1920,1080), (2560,1440), (3840,2160)],
+        "4:3":  [(320,240), (640,480), (800,600), (960,720), (1024,768), (1280,960), (1600,1200)],
+        "1:1":  [(320,320), (480,480), (640,640), (720,720), (1080,1080)],
+        "21:9": [(1280,540), (1920,810), (2560,1080), (3440,1440)],
+        "3:2":  [(360,240), (720,480), (1080,720), (1440,960), (2160,1440)],
+        "5:4":  [(640,512), (800,640), (1280,1024)]
     }
 
     supported_resolutions = []
     resolutions_to_check = all_resolutions.get(aspect_ratio, [])
-
-    for res_str in resolutions_to_check:
-        try:
-            w,h = map(int, res_str.split('x'))
-            if(Camera.is_resolution_supported(cam_index, (w, h))):
-                supported_resolutions.append(res_str)
-        except ValueError:
-            continue
+    config = {'camera_index' : camera_index}
+    for (w, h) in resolutions_to_check:
+        if(Camera.test_camera_resolution(config, (w, h))):
+            supported_resolutions.append(f"{w}x{h}")
 
     if not supported_resolutions:
-        return ["No supported resolutions found"]
-
+        return ["No supported resolution"]
     return supported_resolutions
+
 
 def get_aspect_ratio_list(camera_index=0):
     aspect_list = [
@@ -221,11 +225,12 @@ def get_aspect_ratio_list(camera_index=0):
     ]
     return aspect_list
 
-def get_fps_list(camera_index=0, resolution="1280x720"):
+def get_fps_list(camera_index=0, resolution=(1280, 720)):
     fps_list = [5,10,15,24,25,30]
     res = []
+    config = {'camera_index' : camera_index, 'camera_resolution': resolution}
     for fps in fps_list:
-        if Camera.is_fps_supported(camera_index, resolution, fps):
+        if Camera.test_camera_fps(config, fps):
             res.append(fps)
     return res
 

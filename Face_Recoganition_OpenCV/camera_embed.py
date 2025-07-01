@@ -1,14 +1,10 @@
 import cv2 as cv
 import tkinter as tk
 from PIL import Image, ImageTk
-import os
-import datetime
-import time
-import platform
+from camera import Camera
+
 
 def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame, st = [None] ,path_save = None,camera_frame_size=(640, 480), camera_index=0, resolution=(640, 480)):
-    if(fps < 6):
-        fps = 6
     cam_label = tk.Label(parent_frame)
     cam_label.grid(row=0, column=0, padx=10, pady=10)
 
@@ -27,28 +23,7 @@ def show_camera_embed(parent_frame,fps,cap,control_flag,latest_frame, st = [None
             frame = cv.resize(frame, camera_frame_size)
             latest_frame[0] = frame
             if path_save is not None:
-                if not os.path.exists(path_save):
-                    os.makedirs(path_save)
-                i = 0
-                file_name = datetime.datetime.now().strftime(f"img_%Y%m%d_%H%M%S_{i}.jpg")
-                img_path = os.path.join(path_save, file_name)
-                while os.path.exists(img_path):
-                    i += 1
-                    file_name = datetime.datetime.now().strftime(f"img_%Y%m%d_%H%M%S_{i}.jpg")
-                    img_path = os.path.join(path_save, file_name)
-                if st[0] is not None:
-                    st[0].append(img_path)
-                cv.imwrite(img_path, frame)
-                if platform.system() != "Windows":
-                    for _ in range(3):
-                        try:
-                            test_img = cv.imread(img_path)
-                            if test_img is None:
-                                raise ValueError("Image not read correctly")
-                            break
-                        except Exception as e:
-                            time.sleep(0.01)
-
+                st[0].append(frame)
             frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
             img = Image.fromarray(frame_rgb)
             img_tk = ImageTk.PhotoImage(img)

@@ -28,6 +28,18 @@ def user_already_exists(name, id, score, show_confidence=True):
     print("2. Update Existing User")
     print("3. Exit")
     return loop_int("Enter your choice: ", range_min=1, range_max=3)
+
+def config_confidence_menu(confidence_match, confidence_save):
+    clear_screen()
+    print("Configure Confidence Levels")
+    print("Current Values")
+    print(f"Confidence Level for Saving User Data: {int((1-confidence_save) * 100)}%")
+    print(f"Confidence Level for Recognizing User Data: {int((1-confidence_match) * 100)}%")
+    print("---------------------------")
+    print("1. Set Confidence Level for Saving User Data (Default 60%)")
+    print("2. Set Confidence Level for Recognizing User Data (Default 60%)")
+    print("3. Back to Main Menu")
+    return loop_int("Enter your choice: ", range_min=1, range_max=3)
     
 def recognition_cli():
     clear_screen()
