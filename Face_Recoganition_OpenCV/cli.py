@@ -101,7 +101,7 @@ class CLI:
                     
             elif choice == 4:
                 name,id = self.save.get_nameid()
-                if (name,id,0) in self.data.labels:
+                if any(f'{name}_{id}_' in file for file in os.listdir(self.path)):
                     self.logs.append(f"User {name} with ID {id} exists in the database.")
                 else:
                     self.logs.append(f"User {name} with ID {id} does not exist in the database.")
