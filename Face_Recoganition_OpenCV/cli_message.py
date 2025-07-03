@@ -15,9 +15,10 @@ def welcome_message():
         print("6. Configure Camera Settings")
         print("7. Operate on data in Excel.")
         print("8. Load Custom Excel File")
-        print("9. Exit")
-        return loop_int("Enter your choice: ", range_min=1, range_max=9)
-          
+        print("9. Export Data to csv")
+        print("10. Exit")
+        return loop_int("Enter your choice: ", range_min=1, range_max=10)
+
 def user_already_exists(name, id, score, show_confidence=True):
     clear_screen()
     if show_confidence:

@@ -11,7 +11,6 @@ import time
 from excel_handle import Excel_handle as excel
 from datetime import datetime
 import json
-from collections import deque
 
 def get_safe_data_path(folder_name='data'):
     base_dir = os.path.dirname(sys.executable) if hasattr(sys, 'frozen') else os.path.dirname(__file__)
@@ -115,7 +114,11 @@ class CLI:
             elif choice == 8:
                 self.load_custom_excel()
                 input("Press any key to continue...")
+            
             elif choice == 9:
+                self.ex.export_data_to_csv()
+                input("Press any key to continue...")
+            elif choice == 10:
                 break
 
     def configure_confidence(self):

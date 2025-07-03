@@ -4,6 +4,7 @@ from datetime import datetime
 import time
 import sys
 import os
+import csv
 
 class Excel_handle:
     def __init__(self,path):
@@ -163,3 +164,15 @@ class Excel_handle:
             self.wb.save(self.path)
             return True
         return False
+    
+    def export_data_to_csv(self, csv_path=None):
+        if csv_path is None:
+            csv_path = self.path.replace('.xlsx', '.csv')
+        try:
+            with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                for row in self.ws.iter_rows(values_only=True):
+                    writer.writerow(row)
+            print(f"Data exported to {csv_path} successfully.")
+        except Exception as e:
+            print(f"Error exporting data to CSV: {e}")
