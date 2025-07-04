@@ -70,6 +70,17 @@ def open_xlsx_file():
     except Exception as e:
         print(f"Error opening Excel file: {e}")
         return None
+    
+def get_save_path():
+    save_path = filedialog.asksaveasfilename(
+        title="Save File",
+        defaultextension="data.csv",
+        filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+    )
+    if not save_path:
+        print("No save path selected.")
+        return None
+    return save_path
 
 
 class keyBind:
@@ -421,11 +432,17 @@ class GUI:
         self.clear_frame()
         self.widgets.labels.append(Label(self.frame, text="Face Recognition", font=self.fs.get_main_label_font()))
         self.widgets.labels[-1].grid(column=0, row=0, columnspan=2)
-        buttons_text = ['Register', 'Recognize','Operate Data', 'Settings', 'Exit']
-        buttons_position = [(1, 0), (2, 0), (3, 0), (4, 0),(5, 0)]
-        buttons_command = [self.register_gui, self.recognize_gui, self.op_data ,self.config_gui, self.on_destroy]
-        key_bindings = ['r', 'n', 'o', 's', 'e']  # Key bindings for buttons
+        buttons_text = ['Register', 'Recognize','Operate Data', 'Settings', 'Export as CSV','Exit']
+        buttons_position = [(1, 0), (2, 0), (3, 0), (4, 0),(5, 0), (6, 0)]
+        buttons_command = [self.register_gui, self.recognize_gui, self.op_data ,self.config_gui, self.export_as_csv, self.on_destroy]
+        key_bindings = ['r', 'n', 'o', 's', 'e', 'x']  # Key bindings for buttons
         self.widgets.buttons.create_buttons(buttons_text, buttons_position, buttons_command, key_bindings)
+
+    def export_as_csv(self):
+        save_path = get_save_path()
+        if save_path is None:
+            return
+        self.ex.export_data_to_csv(save_path)
 
     def register_gui(self):
         root.title("Register")
