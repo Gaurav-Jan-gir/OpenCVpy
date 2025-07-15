@@ -70,7 +70,7 @@ def open_xlsx_file():
     except Exception as e:
         print(f"Error opening Excel file: {e}")
         return None
-    
+
 def get_save_path():
     save_path = filedialog.asksaveasfilename(
         title="Save File",
@@ -81,7 +81,6 @@ def get_save_path():
         print("No save path selected.")
         return None
     return save_path
-
 
 class keyBind:
     def __init__(self, root):
@@ -506,13 +505,9 @@ class GUI:
         return self.put_rectangle(put)
     
     def put_rectangle(self, put=False):
-        if self.locations is not None and len(self.locations) > 0 and not (len(self.locations) == 1 and self.locations[0] is None):
-            res = match_image(self.encodings[-1], self.locations[-1], self.data, self.config["confidence_save"], self.latest_image[0])
-            if res is not None:
-                image, self.matched = res
+        if len(self.locations) > 0:
+            image, self.matched = match_image(self.encodings[-1], self.locations[-1], self.data, self.config["confidence_save"], self.latest_image[0])
             self.locations.pop()
-            if res is None:
-                return None
             if put:
                 return self.matched
             self.clear_camera_frame()
@@ -955,6 +950,11 @@ class GUI:
         for entry in entries:
             self.widgets.texts[-1].insert(END, f"{entry}\n")
         self.widgets.texts[-1].configure(state=DISABLED)
+
+    def create_new_user_entry(self, user_name, user_id, data, new_root):
+        data[0] = user_name
+        data[1] = user_id
+        new_root.destroy()
         
     def write_data_gui(self, c_row=None):
         root.title("Write Data")
@@ -969,20 +969,40 @@ class GUI:
                 return
             c_row = self.ex.get_row_number(user_id)
             if c_row is None:
-                new_root = Tk()
-                fram = ttk.Frame(new_root, padding=10)
-                fram.grid(row=0, column=0, sticky="NS")
-                label = Label(fram, text="Enter Name ", font=self.fs.get_main_label_font(weight='normal'))
-                label.grid(column=0, row=0)
-                entry = Entry(fram, width=30)
-                entry.grid(column=1, row=0)
-                create_new_user_entry(label.get(), entry.get(), self.ex)
-                label.grid_remove()
-                entry.grid_remove()
-                fram.grid_remove()
-                new_root.destroy()
-                c_row = self.ex.max_row
-            user_name = self.ex.read_excel(c_row, 2)
+                data = ["",""]
+                new_root = Toplevel(self.root)
+                new_root.title("Entry of new User")
+                new_root.grab_set()
+                new_root.focus_set()
+                new_root.resizable(False, False)
+                new_frame = ttk.Frame(new_root, padding=10)
+                new_frame.grid(row=0, column=0, sticky="NS")
+                label = Label(new_frame, text="Enter Name ", font=self.fs.get_main_label_font(weight='normal'))
+                label.grid(row=0, column=0, columnspan=1)
+                entry = Entry(new_frame, width=30)
+                entry.configure(font=self.fs.get_text_font())
+                entry.focus_set()
+                entry.bind("<Return>", lambda e: self.create_new_user_entry(entry.get(), user_id, data, new_root))
+                entry.grid(row=0, column=1, columnspan=1)
+                yes_button = Button(new_frame, text="Create", command=lambda: self.create_new_user_entry(entry.get(), user_id, data, new_root), font=self.fs.get_button_font())
+                yes_button.grid(row=1, column=0, padx=10, pady=10)
+                no_button = Button(new_frame, text="Cancel", command=new_root.destroy, font=self.fs.get_button_font())
+                no_button.grid(row=1, column=1, padx=10, pady=10)
+
+                parent_x = self.root.winfo_rootx()
+                parent_y = self.root.winfo_rooty()
+                parent_w = self.root.winfo_width()
+                parent_h = self.root.winfo_height()
+
+                w = new_root.winfo_width()
+                h = new_root.winfo_height()
+                x = parent_x + (parent_w)//2
+                y = parent_y + (parent_h)//2
+                new_root.geometry(f"+{x}+{y}")
+
+                new_root.bind("<Escape>", lambda e: new_root.destroy())
+                c_row = self.ex.ws.max_row+1
+                user_name = entry.get()
         else:
             user_id = self.ex.read_excel(c_row, 1)
             user_name = self.ex.read_excel(c_row, 2)
@@ -1252,10 +1272,10 @@ class GUI:
             light_balance = (self.widgets.scales[-1].get() / 100.0)
 
         if camera_index == "" or aspect_ratio == "" or resolution == "":
-            self.clear_status_messages(row=5, column=0)
+            self.clear_status_messages(row=7, column=0)
             message = "Please select a valid camera, aspect ratio, and resolution."
             self.widgets.messages.append(Message(self.frame, text=message, width=200, font=self.fs.get_text_font()))
-            self.widgets.messages[-1].grid(column=0, row=5, columnspan=2)
+            self.widgets.messages[-1].grid(column=0, row=7, columnspan=2)
             return
         
         self.config["camera_index"] = camera_index
@@ -1266,7 +1286,7 @@ class GUI:
         
         self.save_config(self.config)
         
-        self.clear_status_messages(row=6, column=0)
+        self.clear_status_messages(row=7, column=0)
         message = "Camera settings saved successfully."
         self.widgets.messages.append(Message(self.frame, text=message, width=200, font=self.fs.get_text_font()))
         self.widgets.messages[-1].grid(column=0, row=6, columnspan=2)

@@ -51,11 +51,10 @@ def match_image(encoding, location, existing_data, threshold_confidence, img):
     except ValueError as e:
         print(f"Error matching image: {e}")
         return None, None
-    if matched is None:
-        return image1, None
-    elif matched[1] < threshold_confidence:
-        image1 = Camera.put_rect(image1, location)
+    image1 = Camera.put_rect(image1, location)
+    if matched is not None and matched[1] < threshold_confidence:
         return image1, matched
+    return  image1, None
 
 def check_registration(name, id):
     file_path = os.path.join(get_safe_data_path(), f'{name}_{id}_0.npy')
@@ -233,7 +232,6 @@ def get_fps_list(camera_index=0, resolution=(1280, 720)):
         if Camera.test_camera_fps(config, fps):
             res.append(fps)
     return res
-
 
 
 
